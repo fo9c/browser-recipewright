@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Post / Demo Feed</title><link rel="stylesheet" href="/style.css"><script src="/common.js"></script></head>
+<body>
+<div class="layout">
+  <nav aria-label="Primary">
+    <a href="/home.html" data-testid="AppTabBar_Home_Link">Home</a>
+    <button data-testid="SideNav_AccountSwitcher_Button" aria-label="Account menu">@demo_user</button>
+  </nav>
+  <main>
+    <h2 style="padding:0 16px">Post</h2>
+    <section aria-label="Timeline: Conversation"><div id="main"></div><div id="replies"></div></section>
+    <div id="status-line"></div>
+  </main>
+</div>
+<script>
+  if (Demo.requireLogin()) {
+    const [, handle, , id] = location.pathname.split('/');
+    const mainPost = Demo.makePost('main' + id, 0, '');
+    mainPost.handle = handle; mainPost.id = id; mainPost.hasText = true;
+    mainPost.name = handle.replace(/\d+$/, '').replace(/^./, (c) => c.toUpperCase());
+    document.getElementById('main').innerHTML = Demo.postHtml(mainPost);
+    const r = Demo.rng(id);
+    const n = 8 + Math.floor(r() * 40);
+    Demo.infiniteList(document.getElementById('replies'), n, 8, (i) => {
+      const p = Demo.makePost('reply' + id, i, '');
+      p.text = 'Replying to @' + handle + ': ' + p.text;
+      return Demo.postHtml(p);
+    });
+  }
+</script>
+</body></html>

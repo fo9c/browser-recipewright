@@ -1,0 +1,19 @@
+body { font-family: -apple-system, system-ui, sans-serif; margin: 0; background: #fff; color: #0f1419; }
+.layout { display: flex; max-width: 1000px; margin: 0 auto; }
+nav { width: 220px; padding: 16px; position: sticky; top: 0; height: 100vh; box-sizing: border-box; border-right: 1px solid #eee; }
+nav a, nav button { display: block; margin: 10px 0; font-size: 18px; color: #0f1419; text-decoration: none; background: none; border: 0; cursor: pointer; padding: 0; }
+main { flex: 1; max-width: 600px; border-right: 1px solid #eee; }
+.post { border-bottom: 1px solid #eee; padding: 14px 16px; min-height: 120px; }
+.head { display: flex; justify-content: space-between; color: #536471; }
+.head a { color: #536471; }
+[data-testid=tweetText] { margin: 8px 0; font-size: 16px; line-height: 1.4; }
+.actions button { background: none; border: 0; margin-right: 30px; cursor: pointer; color: #536471; font-size: 15px; }
+.tabs a { display: inline-block; padding: 14px 20px; color: #536471; text-decoration: none; }
+.tabs a.on { color: #0f1419; font-weight: bold; border-bottom: 3px solid #1d9bf0; }
+#banner { position: fixed; bottom: 0; left: 0; right: 0; background: #1d9bf0; color: #fff; padding: 18px; text-align: center; z-index: 10; }
+#banner button { margin-left: 16px; padding: 6px 16px; border-radius: 16px; border: 0; cursor: pointer; }
+.searchbar { padding: 10px 16px; }
+.searchbar input { width: 100%; padding: 10px 14px; border-radius: 20px; border: 1px solid #ccc; font-size: 15px; box-sizing: border-box; }
+#status-line { padding: 20px; color: #888; text-align: center; }
+.login { padding: 60px; }
+.login button { font-size: 18px; padding: 10px 28px; border-radius: 22px; background: #0f1419; color: #fff; border: 0; cursor: pointer; }

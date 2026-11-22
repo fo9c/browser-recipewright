@@ -1,0 +1,129 @@
+# Template format v0 — reference
+
+A template is one JSON file: metadata + inputs + defaults + steps + outputs.
+Machine-readable schema: `schema/template.v0.json` (or `browser-rpa schema`).
+
+## Top level
+
+| field | required | meaning |
+|---|---|---|
+| `$schema` | no | URL of the JSON Schema (editors validate with it) |
+| `id` | yes | `site/task`, e.g. `x.com/search-read-posts` |
+| `version` | yes | semver; `patch` bumps the last number |
+| `title` / `description` | title yes | one line for humans and library search |
+| `tags` | no | strings |
+| `site` | yes | allowed domains (subdomains included). Leaving them fails with `NAVIGATION_BLOCKED` |
+| `account` | no | `{ checkUrl, loginUrl, loginCheck }`. Before step 1 the runner opens `checkUrl` and evaluates `loginCheck`; if false it hands off to the human (or fails `LOGIN_REQUIRED` when non-interactive) |
+| `inputs` | no | `{ name: { type: string/integer/number/boolean/array/object, default, description, enum, secret, required } }`. No default ⇒ required. `secret: true` ⇒ shown as `***` in records |
+| `defaults` | no | `timeoutMs` (10000), `retries` (0), `stepGapMs` (number or `[min,max]`), `humanize` (true), `screenshots` (`failure`/`every`/`none`) |
+| `steps` | yes | array of steps |
+| `outputs` | no | `{ from: "{{vars.x}}", schema: {...} }` — final result, checked against a JSON Schema subset (type, required, properties, items, minItems, maxItems, enum) ⇒ `OUTPUT_INVALID` |
+| `provenance` | no | free-form; `patch` appends to `provenance.repairs` |
+
+## Common step fields
+
+`id` (unique, `[a-zA-Z][a-zA-Z0-9_-]*`), `action`, `note`, `expect` (condition polled until true or timeout ⇒ `EXPECT_FAILED`), `timeoutMs`, `retries` (0–5), `optional` (template errors are recorded as `soft-failed` and the run continues; environment errors never are), `saveAs` (store the step result in `vars`), `screenshot` (true ⇒ screenshot after this step).
+
+## Locators (`target`)
+
+A list of candidates tried in order; the first that matches **exactly one visible element** wins. 0 matches ⇒ next; >1 ⇒ next. All fail ⇒ `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`. The record stores every try and which candidate hit.
+
+| candidate | example | stability |
+|---|---|---|
+| `testid` | `{ "testid": "tweet" }` (`data-testid`) | highest |
+| `role` (+`name`) | `{ "role": "button", "name": "Post", "exact": true }` | high |
+| `label` / `placeholder` | `{ "placeholder": "Search" }` | medium |
+| `text` | `{ "text": "Latest", "exact": true }` | medium |
+| `alt` / `title` | `{ "alt": "avatar" }` | medium |
+| `css` | `{ "css": "article[role=article]" }` | low |
+| `xpath` | `{ "xpath": "//article[1]" }` | lowest (warning) |
+
+Modifiers on any candidate: `nth` (0-based, `-1` = last), `within` (a target to search inside), `visible` (default `true`), `frame` (CSS of an iframe), `exact`.
+
+## Actions (20 atomic + 4 control flow)
+
+| action | parameters | result (`saveAs`) |
+|---|---|---|
+| `goto` | `url`, `waitUntil` (`domcontentloaded`) | – |
+| `back` | – | – |
+| `click` | `target`, `button`, `clickCount` | – |
+| `fill` | `target`, `value` | – |
+| `type` | `target`, `text`, `delayMs`, `clear` | – |
+| `press` | `key` (e.g. `Enter`, `Meta+A`), optional `target` | – |
+| `hover` | `target` | – |
+| `select` | `target`, `option` (string or list) | selected values |
+| `check` | `target`, `checked` (default true) | state |
+| `upload` | `target`, `files` | absolute paths |
+| `waitFor` | one of `target` (+`state`: visible/hidden/attached/detached), `url`, `text`, `until` (condition) | – |
+| `wait` | `ms` (number or `[min,max]`) | – |
+| `scroll` | `target` (scroll into view, or scroll over it), `by` (px or `"page"`), `to` (`top`/`bottom`), `times` | – |
+| `read` | `target`, and `fields` **or** `text`/`attr`/`pattern`/`as` | object or value |
+| `queryAll` | `target`, `fields`, `limit` (200) | array |
+| `collect` | `item`, `fields`, `dedupeBy`, `filter`, `until`, `limit`, `offset`, `maxScrolls` (required), `scrollBy`, `scrollWaitMs`, `stopAfterNoNew` (4) | array |
+| `download` | `trigger` (target), `filename` | saved path |
+| `runScript` | `script` (whitelisted name), `args` | script return value |
+| `assert` | `that` (condition), `code` (error code, default `ASSERT_FAILED`), `message` | true |
+| `handoff` | `reason`, `until` (condition) | – |
+| `if` | `when`, `then`, `else` | – |
+| `forEach` | `in`, `as`, `do`, `max` (required), `continueOnError`, `collectFrom` | array built from `collectFrom` |
+| `while` | `when`, `do`, `maxIterations` (required) | – |
+| `group` | `steps` (retries / optional apply to the whole group) | – |
+
+All clicks and typing are trusted CDP input events. With `humanize` the mouse moves on a curved path to a jittered point, keys have variable delays, wheel scrolling is chunked. `click` first runs Playwright's actionability checks (visible, stable, enabled, not covered) ⇒ otherwise `ELEMENT_NOT_ACTIONABLE`.
+
+### Field specs (`fields` in read / queryAll / collect)
+
+`{ "target": [...], "text": true | "attr": "href" | "html": true, "pattern": "regex (group 1 kept)", "as": "string|number|count|url|boolean", "optional": true, "default": 0, "all": true }`
+
+- no `target` ⇒ the item itself; `all` ⇒ array of every match.
+- `as: "count"` understands `1.2K`, `3,456`, `1.5万`, `2M`.
+- A missing non-optional field drops the item (collect/queryAll) or fails the step (read).
+
+### collect
+
+Scroll-and-extract loop for infinite feeds: extract visible items → dedupe by `dedupeBy` → skip the first `offset` unique items → keep those passing `filter` (`{{item.x}}`) → stop when `limit` reached, `until` is true (`{{self}}` = kept list), the list ends (no new items `stopAfterNoNew` times at the bottom) or `maxScrolls`. The record shows `kept, scanned, filteredOut, dropped, scrolls, stoppedBecause`.
+
+## References and conditions
+
+`{{inputs.k}}`, `{{vars.k}}`, `{{account.id}}`, loop variable (`{{post.url}}`), `{{index}}` inside forEach, `{{item.k}}`/`{{self}}` in collect. A string that is exactly one reference keeps its type (array, number). Filters: `| urlencode | trim | number | lower | upper | length | json`.
+
+Conditions (one key each): `exists`/`notExists`/`visible`/`hidden` (target), `urlContains`, `urlMatches`, `textContains: [target, "text"]`, `eq ne gt gte lt lte contains matches: [a, b]`, `countGte countLte countEq: [list, n]`, `truthy`/`empty: value`, `and`/`or: [...]`, `not: {...}`.
+
+## Run record
+
+`~/.browser-rpa/runs/<time>_<template>_<rand>/`
+
+```
+run.json        template, version, profile, inputs (secrets masked), status, error, duration
+steps.jsonl     one line per executed step (loop steps once per round): seq, stepId, path (read-each[2].open-post),
+                action, status (ok/failed/soft-failed), durationMs, urlBefore/After, locator {tried, hit}, expect, attempts, output, error
+state.json      variables after the last finished top-level step (used by --resume)
+output.json     final result
+artifacts/      screenshots, downloads
+failure/        dossier.json, screenshot.png, snapshot.txt, snapshot.refs.json   (only when failed)
+```
+
+## Error codes
+
+| code | category | usual fix |
+|---|---|---|
+| `LOCATOR_NOT_FOUND` | template | new candidates from snapshot |
+| `LOCATOR_AMBIGUOUS` | template | add `nth` / `within` |
+| `ELEMENT_NOT_ACTIONABLE` | template | `waitFor`, or optional step closing a popup |
+| `EXPECT_FAILED` | template | wrong element or wrong expect |
+| `ACTION_TIMEOUT` | template | raise `timeoutMs`, wait for a better condition |
+| `NAVIGATION_BLOCKED` | template | ask the human before adding a domain to `site` |
+| `NAVIGATION_FAILED` | template | network / URL problem |
+| `NOT_ENOUGH_RESULTS` | template | relax filter, raise `maxScrolls` |
+| `OUTPUT_INVALID` | template | fix field extraction |
+| `SCRIPT_REJECTED` | template | never bypass; human reviews the script |
+| `ASSERT_FAILED` / custom | template | as designed |
+| `LOGIN_REQUIRED` | env | human logs in (`browser-rpa login`) |
+| `CHALLENGE_DETECTED` | env | human solves it |
+| `HANDOFF_REQUIRED` | env | human action needed in a non-interactive run |
+| `BROWSER_ERROR` | env | `browser-rpa doctor`, close the other Chrome using the profile |
+
+## Static validation (`browser-rpa validate`)
+
+Errors: schema violations, unknown fields/actions, duplicate step ids or `saveAs`, undeclared inputs or variables not yet produced, unknown filters/conditions, loops without limits, `goto` outside `site`, non-whitelisted or modified scripts, optional `runScript`, missing targets.
+Warnings: single or css/xpath-only locators, xpath, `goto`/`click` without `expect`, secret inputs with screenshots, big loops with no step gap, `collect` without `dedupeBy`, URL hosts built from variables.

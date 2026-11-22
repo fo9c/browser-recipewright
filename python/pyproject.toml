@@ -1,0 +1,13 @@
+[project]
+name = "browser-rpa"
+version = "0.1.0"
+description = "Python helpers for the browser-rpa CLI: run templates, read run records, export CSV"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["browser_rpa"]

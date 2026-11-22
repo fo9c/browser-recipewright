@@ -1,0 +1,20 @@
+{
+  "scripts": {
+    "page-info": {
+      "file": "page-info.js",
+      "sha256": "628287a11dc60b66b3318596cebf899e4a389a56ec81227d1c16ac97948071f3",
+      "domains": [
+        "*"
+      ],
+      "description": "Title, URL, language and page height (read-only)."
+    },
+    "count-show-more": {
+      "file": "expand-truncated.js",
+      "sha256": "610017abc07cba816b51cad9f3711091b3313b90ce7698ac58f125f0cfd278ec",
+      "domains": [
+        "*"
+      ],
+      "description": "Count visible Show more / 显示更多 markers (read-only)."
+    }
+  }
+}

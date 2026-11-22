@@ -1,0 +1,2793 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/fo9c/browser-rpa/main/schema/template.v0.json",
+  "title": "browser-rpa template v0",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "site": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "account": {
+      "type": "object",
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "loginCheck": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "checkUrl": {
+          "type": "string"
+        },
+        "loginUrl": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "inputs": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "integer",
+              "number",
+              "boolean",
+              "array",
+              "object"
+            ]
+          },
+          "default": {},
+          "description": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "enum": {
+            "type": "array",
+            "items": {}
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "stepGapMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        },
+        "humanize": {
+          "type": "boolean"
+        },
+        "screenshots": {
+          "type": "string",
+          "enum": [
+            "failure",
+            "every",
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "schema": {}
+      },
+      "required": [
+        "from"
+      ],
+      "additionalProperties": false
+    },
+    "provenance": {}
+  },
+  "required": [
+    "id",
+    "version",
+    "title",
+    "site",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "step_goto": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "goto"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "url": {
+          "type": "string"
+        },
+        "waitUntil": {
+          "type": "string",
+          "enum": [
+            "load",
+            "domcontentloaded",
+            "networkidle",
+            "commit"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "url"
+      ],
+      "additionalProperties": false
+    },
+    "step_back": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "back"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "step_click": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "click"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "button": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right",
+            "middle"
+          ]
+        },
+        "clickCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_fill": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "fill"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target",
+        "value"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_type": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "type"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "text": {
+          "type": "string"
+        },
+        "delayMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        },
+        "clear": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target",
+        "text"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_press": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "press"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "key": {
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "key"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_hover": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "hover"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_select": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "select"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "option": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target",
+        "option"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_check": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "check"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "checked": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_upload": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "upload"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "files": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target",
+        "files"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_waitFor": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "waitFor"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "url": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "until": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "visible",
+            "hidden",
+            "attached",
+            "detached"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_wait": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "wait"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "ms": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "ms"
+      ],
+      "additionalProperties": false
+    },
+    "step_scroll": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "scroll"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "const": "page"
+            }
+          ]
+        },
+        "to": {
+          "type": "string",
+          "enum": [
+            "top",
+            "bottom"
+          ]
+        },
+        "times": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "id",
+        "action"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_read": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "read"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "text": {
+                "type": "boolean"
+              },
+              "attr": {
+                "type": "string"
+              },
+              "html": {
+                "type": "boolean"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "as": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "count",
+                  "url",
+                  "boolean"
+                ]
+              },
+              "optional": {
+                "type": "boolean"
+              },
+              "all": {
+                "type": "boolean"
+              },
+              "default": {}
+            },
+            "additionalProperties": false
+          }
+        },
+        "text": {
+          "type": "boolean"
+        },
+        "attr": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "as": {
+          "type": "string",
+          "enum": [
+            "string",
+            "number",
+            "count",
+            "url",
+            "boolean"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_queryAll": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "queryAll"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "text": {
+                "type": "boolean"
+              },
+              "attr": {
+                "type": "string"
+              },
+              "html": {
+                "type": "boolean"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "as": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "count",
+                  "url",
+                  "boolean"
+                ]
+              },
+              "optional": {
+                "type": "boolean"
+              },
+              "all": {
+                "type": "boolean"
+              },
+              "default": {}
+            },
+            "additionalProperties": false
+          }
+        },
+        "limit": {
+          "type": [
+            "number",
+            "string"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "target"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_collect": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "collect"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "item": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "text": {
+                "type": "boolean"
+              },
+              "attr": {
+                "type": "string"
+              },
+              "html": {
+                "type": "boolean"
+              },
+              "pattern": {
+                "type": "string"
+              },
+              "as": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "count",
+                  "url",
+                  "boolean"
+                ]
+              },
+              "optional": {
+                "type": "boolean"
+              },
+              "all": {
+                "type": "boolean"
+              },
+              "default": {}
+            },
+            "additionalProperties": false
+          }
+        },
+        "dedupeBy": {
+          "type": "string"
+        },
+        "filter": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "until": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "limit": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxScrolls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 500
+        },
+        "scrollBy": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "const": "page"
+            }
+          ]
+        },
+        "scrollWaitMs": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          ]
+        },
+        "stopAfterNoNew": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "item",
+        "fields",
+        "maxScrolls"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_download": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "download"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "trigger": {
+          "$ref": "#/$defs/__schema0"
+        },
+        "filename": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "trigger"
+      ],
+      "additionalProperties": false,
+      "$defs": {
+        "__schema0": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "testid": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "alt": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "css": {
+                "type": "string"
+              },
+              "xpath": {
+                "type": "string"
+              },
+              "exact": {
+                "type": "boolean"
+              },
+              "within": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "nth": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "visible": {
+                "type": "boolean"
+              },
+              "frame": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "step_runScript": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "runScript"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "script": {
+          "type": "string"
+        },
+        "args": {}
+      },
+      "required": [
+        "id",
+        "action",
+        "script"
+      ],
+      "additionalProperties": false
+    },
+    "step_assert": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "assert"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "that": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "that"
+      ],
+      "additionalProperties": false
+    },
+    "step_handoff": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "handoff"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "until": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "step_if": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "if"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "when": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "then": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "else": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "when",
+        "then"
+      ],
+      "additionalProperties": false
+    },
+    "step_forEach": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "forEach"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "in": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {}
+            }
+          ]
+        },
+        "as": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "do": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "max": {
+          "type": [
+            "number",
+            "string"
+          ]
+        },
+        "continueOnError": {
+          "type": "boolean"
+        },
+        "collectFrom": {}
+      },
+      "required": [
+        "id",
+        "action",
+        "in",
+        "as",
+        "do",
+        "max"
+      ],
+      "additionalProperties": false
+    },
+    "step_while": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "while"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "when": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "do": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        },
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "when",
+        "do",
+        "maxIterations"
+      ],
+      "additionalProperties": false
+    },
+    "step_group": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "group"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/step"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "steps"
+      ],
+      "additionalProperties": false
+    },
+    "step": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/step_goto"
+        },
+        {
+          "$ref": "#/$defs/step_back"
+        },
+        {
+          "$ref": "#/$defs/step_click"
+        },
+        {
+          "$ref": "#/$defs/step_fill"
+        },
+        {
+          "$ref": "#/$defs/step_type"
+        },
+        {
+          "$ref": "#/$defs/step_press"
+        },
+        {
+          "$ref": "#/$defs/step_hover"
+        },
+        {
+          "$ref": "#/$defs/step_select"
+        },
+        {
+          "$ref": "#/$defs/step_check"
+        },
+        {
+          "$ref": "#/$defs/step_upload"
+        },
+        {
+          "$ref": "#/$defs/step_waitFor"
+        },
+        {
+          "$ref": "#/$defs/step_wait"
+        },
+        {
+          "$ref": "#/$defs/step_scroll"
+        },
+        {
+          "$ref": "#/$defs/step_read"
+        },
+        {
+          "$ref": "#/$defs/step_queryAll"
+        },
+        {
+          "$ref": "#/$defs/step_collect"
+        },
+        {
+          "$ref": "#/$defs/step_download"
+        },
+        {
+          "$ref": "#/$defs/step_runScript"
+        },
+        {
+          "$ref": "#/$defs/step_assert"
+        },
+        {
+          "$ref": "#/$defs/step_handoff"
+        },
+        {
+          "$ref": "#/$defs/step_if"
+        },
+        {
+          "$ref": "#/$defs/step_forEach"
+        },
+        {
+          "$ref": "#/$defs/step_while"
+        },
+        {
+          "$ref": "#/$defs/step_group"
+        }
+      ]
+    }
+  }
+}

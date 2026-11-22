@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Search / Demo Feed</title><link rel="stylesheet" href="/style.css"><script src="/common.js"></script></head>
+<body>
+<div class="layout">
+  <nav aria-label="Primary">
+    <a href="/home.html" data-testid="AppTabBar_Home_Link">Home</a>
+    <button data-testid="SideNav_AccountSwitcher_Button" aria-label="Account menu">@demo_user</button>
+  </nav>
+  <main>
+    <div class="searchbar"><form action="/search.html"><input data-testid="SearchBox_Search_Input" name="q" placeholder="Search" aria-label="Search query" role="combobox"></form></div>
+    <div class="tabs" role="tablist"></div>
+    <section aria-label="Timeline: Search timeline"><div id="feed"></div></section>
+    <div id="status-line"></div>
+  </main>
+</div>
+<div id="banner" role="dialog" aria-label="Cookies">This demo uses cookies. <button data-testid="cookie-accept">Accept all</button></div>
+<script>
+  if (Demo.requireLogin()) {
+    const p = new URLSearchParams(location.search);
+    const q = p.get('q') || '';
+    const f = p.get('f') || 'top';
+    document.querySelector('[name=q]').value = q;
+    document.querySelector('.tabs').innerHTML = ['top', 'live'].map((t) => `<a role="tab" class="${t === f ? 'on' : ''}" href="/search.html?q=${encodeURIComponent(q)}&f=${t}">${t === 'top' ? 'Top' : 'Latest'}</a>`).join('');
+    const banner = document.getElementById('banner');
+    if (sessionStorage.getItem('cookies') === '1') banner.remove();
+    else banner.querySelector('button').onclick = () => { sessionStorage.setItem('cookies', '1'); banner.remove(); };
+    Demo.infiniteList(document.getElementById('feed'), 150, 10, (i) => Demo.postHtml(Demo.makePost(q + f, i, q)));
+  }
+</script>
+</body></html>

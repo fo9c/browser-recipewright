@@ -1,0 +1,11 @@
+browser-rpa
+Copyright 2026 fo9c and contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It depends on (not bundled in source form):
+- patchright (Apache-2.0), a patched build of Microsoft Playwright (Apache-2.0)
+- zod (MIT), commander (MIT)
+
+browser-rpa is a clean-room implementation. It does not contain code from any
+closed-source RPA product.

@@ -1,0 +1,7 @@
+{
+  "stepId": "collect-posts",
+  "ops": [
+    { "op": "replace", "path": "/item", "value": [{ "testid": "tweet" }, { "role": "article" }] }
+  ],
+  "note": "example: the site renamed the post container"
+}

@@ -1,0 +1,60 @@
+{
+  "name": "browser-rpa",
+  "version": "0.1.0",
+  "description": "Agent-agnostic browser RPA: AI or humans author declarative JSON workflow templates; a stealthy CDP executor (patchright + real Chrome) replays them deterministically and records every step for AI self-repair.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fo9c/browser-rpa.git"
+  },
+  "homepage": "https://github.com/fo9c/browser-rpa#readme",
+  "keywords": [
+    "rpa",
+    "browser-automation",
+    "agent",
+    "skill",
+    "claude-code",
+    "patchright",
+    "cdp",
+    "workflow",
+    "scraping"
+  ],
+  "bin": {
+    "browser-rpa": "bin/browser-rpa.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "templates",
+    "scripts",
+    "schema",
+    "skills",
+    "demo-site",
+    "README.md",
+    "README.en.md",
+    "docs",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "prepare": "tsc -p .",
+    "test": "node --test tests/unit.test.mjs tests/e2e.test.mjs",
+    "test:e2e": "node --test tests/e2e.test.mjs",
+    "test:unit": "node --test tests/unit.test.mjs",
+    "schema": "node bin/browser-rpa.js schema > schema/template.v0.json"
+  },
+  "dependencies": {
+    "commander": "^15.1.0",
+    "patchright": "^1.64.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}
