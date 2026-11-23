@@ -17,6 +17,10 @@ export const FILTERS: Record<string, (v: any) => any> = {
   upper: (v) => (v == null ? '' : String(v).toUpperCase()),
   length: (v) => (v == null ? 0 : Array.isArray(v) || typeof v === 'string' ? v.length : Object.keys(v).length),
   json: (v) => JSON.stringify(v),
+  /** one level: [[a,b],[c]] -> [a,b,c]; non-array items are kept as they are */
+  flatten: (v) => (Array.isArray(v) ? v.flatMap((x) => (Array.isArray(x) ? x : [x])) : v),
+  /** drop null/undefined items from a list */
+  compact: (v) => (Array.isArray(v) ? v.filter((x) => x != null) : v),
 };
 
 export function parseExpr(expr: string): { path: string[]; filters: string[] } {

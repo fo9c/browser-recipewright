@@ -219,6 +219,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -279,6 +303,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         }
@@ -325,6 +373,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -449,6 +521,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -562,6 +658,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -707,6 +827,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -820,6 +964,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -929,6 +1097,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -1054,6 +1246,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -1166,6 +1382,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -1290,6 +1530,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -1422,6 +1686,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -1496,6 +1784,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -1628,6 +1940,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -1802,6 +2138,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -1961,6 +2321,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -2194,6 +2578,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -2307,6 +2715,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -2358,6 +2790,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -2420,6 +2876,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -2477,6 +2957,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -2546,6 +3050,30 @@
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
         "screenshot": {
           "type": "boolean"
         },
@@ -2579,7 +3107,10 @@
         "continueOnError": {
           "type": "boolean"
         },
-        "collectFrom": {}
+        "collectFrom": {},
+        "flatten": {
+          "type": "boolean"
+        }
       },
       "required": [
         "id",
@@ -2627,6 +3158,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"
@@ -2695,6 +3250,30 @@
         "saveAs": {
           "type": "string",
           "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
         },
         "screenshot": {
           "type": "boolean"

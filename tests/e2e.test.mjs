@@ -64,6 +64,39 @@ test('login via snapshot + act, then full run succeeds with records', { skip }, 
   assert.ok(steps.find((s) => s.path === 'read-each[2].collect-replies'));
 });
 
+test('pagination merge: appendTo + dedupe, forEach.flatten; act collect shows items', { skip }, async () => {
+  const feed = JSON.parse(fs.readFileSync(path.join(ROOT, 'templates/demo/local-feed.json'), 'utf8'));
+  const c = feed.steps.find((s) => s.id === 'collect-posts');
+  const fields = { url: c.fields.url, author: c.fields.author };
+  const page = (id, extra) => ({ id, action: 'collect', item: c.item, fields, dedupeBy: 'url', limit: 3, maxScrolls: 3, ...extra });
+  const tpl = {
+    id: 'e2e-merge', version: '0.1.0', title: 'merge pages', site: ['127.0.0.1', 'localhost'],
+    inputs: { base: { type: 'string', required: true } },
+    steps: [
+      { id: 'pages', action: 'forEach', in: ['agent', 'agent'], as: 'kw', max: 2, flatten: true, collectFrom: '{{ vars.part }}', saveAs: 'flat', do: [
+        { id: 'open', action: 'goto', url: '{{inputs.base}}/search.html?q={{kw}}&f=top' },
+        page('grab', { saveAs: 'part', appendTo: { var: 'all', dedupeBy: 'url' } }),
+      ] },
+    ],
+    outputs: { from: '{{ vars }}' },
+  };
+  const file = path.join(HOME, 'merge.json');
+  fs.writeFileSync(file, JSON.stringify(tpl));
+  const r = await cli('run', file, '-i', `base=${srv.url}`, '-p', 'demo/e2e', '--no-handoff');
+  assert.equal(r.json.status, 'success', r.stdout + r.stderr);
+  const out = JSON.parse(fs.readFileSync(r.json.output, 'utf8'));
+  assert.equal(out.flat.length, 6, 'forEach.flatten gives one flat list of 2 pages x 3');
+  assert.ok(out.flat.every((x) => !Array.isArray(x)));
+  assert.equal(out.all.length, 3, 'appendTo with dedupeBy drops the repeated page');
+
+  const act = await cli('act', 'collect', '-p', 'demo/e2e', '--step', JSON.stringify(page('peek', {})));
+  assert.equal(act.json.status, 'success', act.stdout);
+  assert.equal(act.json.count, 3);
+  assert.equal(act.json.items.length, 3);
+  assert.ok(act.json.items[0].url && act.json.stats.stoppedBecause, act.stdout);
+  assert.match(act.stderr, /collect: 3 item\(s\) kept/);
+});
+
 test('broken locator → dossier → patch → resume succeeds', { skip }, async () => {
   const tpl = JSON.parse(fs.readFileSync(path.join(ROOT, 'templates/demo/local-feed.json'), 'utf8'));
   tpl.id = 'demo/e2e-broken';
@@ -81,6 +114,7 @@ test('broken locator → dossier → patch → resume succeeds', { skip }, async
   fs.writeFileSync(patch, JSON.stringify({ stepId: 'collect-posts', ops: [{ op: 'replace', path: '/item', value: [{ testid: 'tweet' }, { role: 'article' }] }] }));
   assert.equal((await cli('patch', file, patch, '--write')).json.version, '0.1.1');
   const r2 = await cli('run', file, '--resume', r.json.runDir, '-p', 'demo/e2e', '--no-handoff');
+  assert.match(r2.stderr, /↻ resuming at top-level step \d+\/\d+ "/, r2.stderr);
   assert.equal(r2.json.status, 'success', r2.stderr);
 });
 

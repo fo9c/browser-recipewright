@@ -1,6 +1,6 @@
 {
   "name": "browser-rpa",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Agent-agnostic browser RPA: AI or humans author declarative JSON workflow templates; a stealthy CDP executor (patchright + real Chrome) replays them deterministically and records every step for AI self-repair.",
   "type": "module",
   "license": "Apache-2.0",

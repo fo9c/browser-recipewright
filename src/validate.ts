@@ -1,5 +1,5 @@
 /** Static validation: finds template problems without opening a browser. */
-import { ACTION_SCHEMAS, TemplateSchema, Target, PRIMARY_LOCATOR_KEYS, TARGET_ACTIONS } from './schema.js';
+import { ACTION_SCHEMAS, TemplateSchema, Target, PRIMARY_LOCATOR_KEYS, TARGET_ACTIONS, appendTargets } from './schema.js';
 import { findRefs, parseExpr, FILTERS } from './render.js';
 import { CONDITION_KEYS, conditionTargets } from './conditions.js';
 import { checkScript, hostMatches } from './scripts.js';
@@ -55,7 +55,7 @@ export function validateTemplate(tpl: any): ValidationResult {
       if (root === 'inputs') {
         if (!(second in inputs)) add('error', stepId, path, `{{${expr}}}: input "${second}" is not declared in inputs`);
       } else if (root === 'vars') {
-        if (!declaredVars.has(second)) add('error', stepId, path, `{{${expr}}}: variable "${second}" is not produced by any earlier step (saveAs)`);
+        if (second !== undefined && !declaredVars.has(second)) add('error', stepId, path, `{{${expr}}}: variable "${second}" is not produced by any earlier step (saveAs or appendTo)`);
       } else if (root === 'account' || root === 'env') {
         // runtime-bound
       } else if (!extraRoots.has(root)) {
@@ -216,7 +216,13 @@ export function validateTemplate(tpl: any): ValidationResult {
         if (used) add('warning', sid, p, 'step uses a secret input while screenshots are on');
       }
 
+      if (s.appendTo) {
+        const v = typeof s.appendTo === 'string' ? s.appendTo : s.appendTo.var;
+        if (savedAt.has(v)) add('error', sid, `${p}.appendTo`, `variable "${v}" is also written by saveAs at ${savedAt.get(v)}; use a different name`);
+        if (s.action === 'forEach' && s.collectFrom === undefined) add('warning', sid, `${p}.appendTo`, 'forEach without collectFrom returns nothing to append');
+      }
       if (s.saveAs) {
+        if (appendTargets(tpl.steps).has(s.saveAs)) add('error', sid, `${p}.saveAs`, `variable "${s.saveAs}" is also an appendTo list; use a different name`);
         if (savedAt.has(s.saveAs)) add('error', sid, `${p}.saveAs`, `variable "${s.saveAs}" is already saved by step at ${savedAt.get(s.saveAs)}`);
         else savedAt.set(s.saveAs, p);
         declaredVars.add(s.saveAs);
@@ -224,6 +230,8 @@ export function validateTemplate(tpl: any): ValidationResult {
     });
   };
 
+  // appendTo lists exist (empty) from the start of the run, so loops may read them before the first append
+  for (const v of appendTargets(tpl.steps)) declaredVars.add(v);
   walk(tpl.steps, 'steps', new Set());
   if (tpl.account?.loginCheck) checkCond(tpl.account.loginCheck, null, 'account.loginCheck', new Set());
   if (tpl.outputs?.from) checkRefs(tpl.outputs.from, null, 'outputs.from', new Set());

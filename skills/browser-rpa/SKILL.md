@@ -32,6 +32,9 @@ browser-rpa act click --ref r12 -p x.com/main                   # try ONE step, 
 browser-rpa act fill --ref r5 --value "hello" -p x.com/main
 browser-rpa act read --ref r20 --fields '{"text":{"text":true}}' -p x.com/main
 browser-rpa act goto --url "https://x.com/search?q=ai" -p x.com/main
+browser-rpa act collect --step '{"item":[{"testid":"tweet"}],"fields":{...},"limit":5,"maxScrolls":3}' -p x.com/main
+#   collect prints {count, items:[...], fieldsEmpty:{field: n}, stats:{scanned, filteredOut, scrolls, stoppedBecause}}
+#   fieldsEmpty tells you which field locator is wrong before you put the step in a template
 ```
 - Profiles are `<site>/<account>`; each is a separate Chrome user-data-dir with its own login.
 - `snapshot --json` gives, for each ref, candidates already checked to match exactly one element. Copy them into `target`.
@@ -65,7 +68,7 @@ Rules that matter:
 - Add `expect` to every `goto`/`click` so failures surface at the right step.
 - Infinite feeds: use `collect` (scrolls and extracts as it goes; feeds remove off-screen items). Never `while`+`queryAll`.
 - Loops need limits (`forEach.max`, `while.maxIterations`, `collect.maxScrolls`).
-- References: `{{inputs.x}}`, `{{vars.x}}` (from an earlier `saveAs`), `{{item.x}}` (collect filter), loop variable (`forEach.as`), `{{self}}` (collect until). Filters: `urlencode trim number lower upper length json`. No arbitrary expressions.
+- References: `{{inputs.x}}`, `{{vars.x}}` (from an earlier `saveAs`), `{{item.x}}` (collect filter), loop variable (`forEach.as`), `{{self}}` (collect until). Filters: `urlencode trim number lower upper length json flatten compact`. Paging: put `"appendTo": {"var": "all", "dedupeBy": "url"}` on the step that reads each page, so all pages end up in ONE flat list `{{vars.all}}` (see template-format.md, Pagination). No arbitrary expressions.
 - Conditions are objects: `exists notExists visible hidden urlContains urlMatches textContains eq ne gt gte lt lte contains matches and or not countGte countLte countEq truthy empty`.
 - Page JavaScript only via `runScript` with a whitelisted script (see `browser-rpa` `scripts/manifest.json`). Never ask to disable the whitelist.
 - Read-only by default. Anything that posts, buys, deletes or messages needs the human's explicit OK first.

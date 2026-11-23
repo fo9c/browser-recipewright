@@ -16,6 +16,7 @@ import { RunRecorder, StepRecord, ERROR_HINTS, errorCategory, lastSuccessFor, lo
 import { checkSchema } from './jsonschema.js';
 import { loadScriptCode, hostMatches } from './scripts.js';
 import { validateTemplate } from './validate.js';
+import { appendTargets } from './schema.js';
 import type { LoadedTemplate } from './library.js';
 import { RpaError, sleep, pickMs, log, truncateForRecord, readJson, writeJson, ENV_ERROR_CODES } from './util.js';
 
@@ -246,7 +247,7 @@ export class Runner {
       if (resumeState) {
         this.scope.vars = resumeState.vars || {};
         startIdx = resumeState.nextStep || 0;
-        log.info(`↻ resuming from step #${startIdx} (${this.tpl.steps[startIdx]?.id})`);
+        log.info(`↻ resuming at top-level step ${startIdx + 1}/${this.tpl.steps.length} "${this.tpl.steps[startIdx]?.id}" (skipping ${startIdx} finished step(s); from ${this.opts.resumeFrom})`);
         if (this.tpl.account?.loginCheck && !this.opts.skipLoginCheck) await this.loginCheck();
         // put the browser back on the page where the failed step started
         const stepId = this.tpl.steps[startIdx]?.id;
@@ -259,6 +260,7 @@ export class Runner {
         await this.loginCheck();
       }
       const saveState = (next: number) => this.rec.saveState({ nextStep: next, nextStepId: this.tpl.steps[next]?.id ?? null, vars: this.scope.vars, inputs: this.scope.inputs });
+      for (const v of appendTargets(this.tpl.steps)) if (!Array.isArray(this.scope.vars[v])) this.scope.vars[v] = [];
       saveState(startIdx);
       for (let i = startIdx; i < this.tpl.steps.length; i++) {
         const st = this.tpl.steps[i];
@@ -383,6 +385,7 @@ export class Runner {
         const out = await this.control(step, stepPath, scope, rec);
         rec.output = truncateForRecord(out, 600);
         if (step.saveAs) scope.vars[step.saveAs] = out;
+        if (step.appendTo) rec.appended = appendTo(scope, step.appendTo, out);
         finish();
         return out;
       } catch (e: any) {
@@ -455,6 +458,7 @@ export class Runner {
 
     rec.output = truncateForRecord(value);
     if (step.saveAs) scope.vars[step.saveAs] = value;
+    if (step.appendTo) rec.appended = appendTo(scope, step.appendTo, value);
     if (this.screenshots === 'every' || step.screenshot) await this.screenshot(step.id, rec);
     finish();
     log.info(`  ✓ ${stepPath} (${step.action}) ${rec.durationMs}ms${rec.locator?.hit > 0 ? ` [fallback locator #${rec.locator.hit}]` : ''}`);
@@ -522,7 +526,8 @@ export class Runner {
         }
         rec.note = `${Math.min(list.length, max)} item(s), ${failures.length} failed`;
         if (failures.length) rec.failures = failures;
-        return step.collectFrom !== undefined ? results : null;
+        if (step.collectFrom === undefined) return null;
+        return step.flatten ? results.flatMap((x) => (Array.isArray(x) ? x : [x])) : results;
       }
     }
   }
@@ -753,6 +758,28 @@ export class Runner {
     log.info(`    collect: kept ${results.length}, scanned ${scanned}, filtered ${filteredOut}, scrolls ${scrolls}, stop=${stop}`);
     return results;
   }
+}
+
+/** appendTo: add a step's output to a list variable (arrays are spread), optionally skipping duplicates. */
+function appendTo(scope: Scope, spec: string | { var: string; dedupeBy?: string }, out: any) {
+  const name = typeof spec === 'string' ? spec : spec.var;
+  const by = typeof spec === 'string' ? undefined : spec.dedupeBy;
+  const list: any[] = Array.isArray(scope.vars[name]) ? scope.vars[name] : [];
+  const incoming = out == null ? [] : Array.isArray(out) ? out : [out];
+  let added = 0;
+  let duplicates = 0;
+  const seen = by ? new Set(list.map((x) => JSON.stringify(x?.[by]))) : null;
+  for (const x of incoming) {
+    if (seen) {
+      const k = JSON.stringify(x?.[by!]);
+      if (x?.[by!] != null && seen.has(k)) { duplicates++; continue; }
+      seen.add(k);
+    }
+    list.push(x);
+    added++;
+  }
+  scope.vars[name] = list;
+  return { var: name, added, duplicates, total: list.length };
 }
 
 function collectSaves(steps: any[], acc: string[] = []): string[] {

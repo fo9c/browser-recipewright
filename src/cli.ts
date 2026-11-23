@@ -203,11 +203,40 @@ program
     if (o.ms) step.ms = Number(o.ms);
     const c = await connect(o.profile);
     try {
+      if (!step.saveAs) step.saveAs = '_act_out';
       const tpl = { id: '_act', version: '0.0.0', title: 'act', site: ['*'], defaults: { humanize: o.humanize }, steps: [step] };
       const runner = new Runner({ loaded: { template: tpl, path: '(act)', source: 'file' }, connected: c, runsDir: path.join(dirs.runs(), '_act'), skipLoginCheck: true, handoff: 'never' });
       const res = await runner.run();
       const rec = readSteps(res.runDir).find((s) => s.stepId === step.id);
-      out({ status: res.status, step, locator: rec?.locator ?? null, expect: rec?.expect ?? null, output: res.output?.[step.saveAs ?? ''] ?? rec?.output ?? null, url: c.page.url(), error: res.error ?? null, runDir: res.runDir });
+      const value = res.output?.[step.saveAs] ?? null;
+      if (step.saveAs === '_act_out') delete step.saveAs;
+      if (step.action === 'collect' && Array.isArray(value)) {
+        // collect: lead with the items and a per-field fill report, so it is obvious what the fields extracted
+        const fieldNames = Object.keys(step.fields || {});
+        const missing: Record<string, number> = {};
+        for (const f of fieldNames) {
+          const n = value.filter((it: any) => it?.[f] == null || it?.[f] === '').length;
+          if (n) missing[f] = n;
+        }
+        const st = rec?.collect ?? {};
+        log.info(`collect: ${value.length} item(s) kept; scanned ${st.scanned ?? '?'}, filtered out ${st.filteredOut ?? 0}, scrolls ${st.scrolls ?? 0}, stopped because: ${st.stoppedBecause ?? '?'}`);
+        for (const [f, n] of Object.entries(missing)) log.info(`  ⚠️ field "${f}" is empty in ${n}/${value.length} item(s)`);
+        out({
+          status: res.status,
+          action: 'collect',
+          count: value.length,
+          items: value,
+          fieldsEmpty: missing,
+          stats: st,
+          locator: rec?.locator ?? null,
+          url: c.page.url(),
+          error: res.error ?? null,
+          step,
+          runDir: res.runDir,
+        });
+      } else {
+        out({ status: res.status, action: step.action, output: value, locator: rec?.locator ?? null, expect: rec?.expect ?? null, url: c.page.url(), error: res.error ?? null, step, runDir: res.runDir });
+      }
       if (res.error) process.exitCode = exitCodeFor(res.error.code);
     } finally {
       await disconnect(c);

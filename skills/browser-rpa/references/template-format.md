@@ -22,7 +22,7 @@ Machine-readable schema: `schema/template.v0.json` (or `browser-rpa schema`).
 
 ## Common step fields
 
-`id` (unique, `[a-zA-Z][a-zA-Z0-9_-]*`), `action`, `note`, `expect` (condition polled until true or timeout ⇒ `EXPECT_FAILED`), `timeoutMs`, `retries` (0–5), `optional` (template errors are recorded as `soft-failed` and the run continues; environment errors never are), `saveAs` (store the step result in `vars`), `screenshot` (true ⇒ screenshot after this step).
+`id` (unique, `[a-zA-Z][a-zA-Z0-9_-]*`), `action`, `note`, `expect` (condition polled until true or timeout ⇒ `EXPECT_FAILED`), `timeoutMs`, `retries` (0–5), `optional` (template errors are recorded as `soft-failed` and the run continues; environment errors never are), `saveAs` (store the step result in `vars`), `appendTo` (add the step result to a list in `vars`: arrays are spread into it, so repeated pages build ONE flat list; `"appendTo": "all"` or `{"var": "all", "dedupeBy": "url"}` to skip items already in the list; the list starts as `[]`, so loop conditions may read it before the first append; a name cannot be both `saveAs` and `appendTo`), `screenshot` (true ⇒ screenshot after this step).
 
 ## Locators (`target`)
 
@@ -65,7 +65,7 @@ Modifiers on any candidate: `nth` (0-based, `-1` = last), `within` (a target to 
 | `assert` | `that` (condition), `code` (error code, default `ASSERT_FAILED`), `message` | true |
 | `handoff` | `reason`, `until` (condition) | – |
 | `if` | `when`, `then`, `else` | – |
-| `forEach` | `in`, `as`, `do`, `max` (required), `continueOnError`, `collectFrom` | array built from `collectFrom` |
+| `forEach` | `in`, `as`, `do`, `max` (required), `continueOnError`, `collectFrom`, `flatten` | array built from `collectFrom`; with `flatten: true`, per-iteration arrays are joined into one list |
 | `while` | `when`, `do`, `maxIterations` (required) | – |
 | `group` | `steps` (retries / optional apply to the whole group) | – |
 
@@ -85,7 +85,7 @@ Scroll-and-extract loop for infinite feeds: extract visible items → dedupe by 
 
 ## References and conditions
 
-`{{inputs.k}}`, `{{vars.k}}`, `{{account.id}}`, loop variable (`{{post.url}}`), `{{index}}` inside forEach, `{{item.k}}`/`{{self}}` in collect. A string that is exactly one reference keeps its type (array, number). Filters: `| urlencode | trim | number | lower | upper | length | json`.
+`{{inputs.k}}`, `{{vars.k}}`, `{{account.id}}`, loop variable (`{{post.url}}`), `{{index}}` inside forEach, `{{item.k}}`/`{{self}}` in collect. A string that is exactly one reference keeps its type (array, number). Filters: `| urlencode | trim | number | lower | upper | length | json | flatten | compact` (`flatten` joins a list of lists one level deep; `compact` drops null items).
 
 Conditions (one key each): `exists`/`notExists`/`visible`/`hidden` (target), `urlContains`, `urlMatches`, `textContains: [target, "text"]`, `eq ne gt gte lt lte contains matches: [a, b]`, `countGte countLte countEq: [list, n]`, `truthy`/`empty: value`, `and`/`or: [...]`, `not: {...}`.
 
@@ -127,3 +127,19 @@ failure/        dossier.json, screenshot.png, snapshot.txt, snapshot.refs.json  
 
 Errors: schema violations, unknown fields/actions, duplicate step ids or `saveAs`, undeclared inputs or variables not yet produced, unknown filters/conditions, loops without limits, `goto` outside `site`, non-whitelisted or modified scripts, optional `runScript`, missing targets.
 Warnings: single or css/xpath-only locators, xpath, `goto`/`click` without `expect`, secret inputs with screenshots, big loops with no step gap, `collect` without `dedupeBy`, URL hosts built from variables.
+
+## Pagination: one flat list across pages
+
+Use `appendTo` inside the loop that turns pages. Do not `saveAs` each page and return the list of pages (that gives `[[...],[...]]`).
+
+```json
+{ "id": "pages", "action": "while", "maxIterations": 5,
+  "when": { "countLte": ["{{vars.all}}", 29] },
+  "do": [
+    { "id": "grab", "action": "queryAll", "target": [{ "css": "tr.athing" }], "fields": { "title": { "target": [{ "css": ".titleline a" }], "text": true } },
+      "appendTo": { "var": "all", "dedupeBy": "title" } },
+    { "id": "next", "action": "click", "target": [{ "role": "link", "name": "More" }], "optional": true }
+  ] }
+```
+
+Then `"outputs": { "from": "{{vars.all}}" }`. With `forEach` over page numbers you can instead set `collectFrom` + `"flatten": true`, or apply `| flatten` later.

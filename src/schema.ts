@@ -59,6 +59,12 @@ const common = {
   retries: z.number().int().min(0).max(5).optional(),
   optional: z.boolean().optional(),
   saveAs: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/).optional(),
+  appendTo: z
+    .union([
+      z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),
+      z.strictObject({ var: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/), dedupeBy: z.string().optional() }),
+    ])
+    .optional(),
   screenshot: z.boolean().optional(),
 };
 
@@ -116,6 +122,7 @@ export const ACTION_SCHEMAS: Record<string, z.ZodTypeAny> = {
     max: tmplNum,
     continueOnError: z.boolean().optional(),
     collectFrom: z.any().optional(),
+    flatten: z.boolean().optional(),
   }),
   while: s({ when: Cond, do: Steps, maxIterations: z.number().int().min(1).max(10000) }),
   group: s({ steps: Steps }),
@@ -193,4 +200,13 @@ export function buildJsonSchema(): any {
     ...root,
     $defs: { ...(root.$defs || {}), ...defs },
   };
+}
+
+/** Names of all list variables filled by `appendTo` anywhere in the steps. */
+export function appendTargets(steps: any[], acc = new Set<string>()): Set<string> {
+  for (const s of steps || []) {
+    if (s.appendTo) acc.add(typeof s.appendTo === 'string' ? s.appendTo : s.appendTo.var);
+    for (const k of ['do', 'then', 'else', 'steps']) if (Array.isArray(s[k])) appendTargets(s[k], acc);
+  }
+  return acc;
 }

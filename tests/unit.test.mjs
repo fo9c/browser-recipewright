@@ -122,3 +122,27 @@ test('JSON Schema export builds', () => {
   assert.ok(s.$defs.step.oneOf.length >= 24);
   assert.ok(s.$defs.step_collect.properties.maxScrolls);
 });
+
+test('merge pages: flatten filter, forEach.flatten and appendTo validate', () => {
+  assert.deepEqual(render('{{ vars.p | flatten }}', { vars: { p: [[1, 2], [3], 4] } }), [1, 2, 3, 4]);
+  assert.deepEqual(render('{{ vars.p | compact }}', { vars: { p: [1, null, 2] } }), [1, 2]);
+  const base = { id: 't', version: '0.1.0', title: 't', site: ['example.com'] };
+  const ok = validateTemplate({
+    ...base,
+    steps: [
+      { id: 'pages', action: 'while', maxIterations: 5, when: { countLte: ['{{ vars.all }}', 9] }, do: [
+        { id: 'grab', action: 'queryAll', target: [{ css: 'li' }], appendTo: { var: 'all', dedupeBy: 'url' } },
+      ] },
+      { id: 'each', action: 'forEach', in: [1, 2], as: 'p', max: 2, flatten: true, collectFrom: '{{ vars.part }}', saveAs: 'merged', do: [
+        { id: 'q', action: 'queryAll', target: [{ css: 'li' }], saveAs: 'part' },
+      ] },
+    ],
+    outputs: { from: '{{ vars.all }}' },
+  });
+  assert.equal(ok.ok, true, JSON.stringify(ok.errors, null, 2));
+  const clash = validateTemplate({ ...base, steps: [
+    { id: 'a', action: 'queryAll', target: [{ css: 'li' }], saveAs: 'x' },
+    { id: 'b', action: 'queryAll', target: [{ css: 'li' }], appendTo: 'x' },
+  ] });
+  assert.match(clash.errors.map((e) => e.message).join('\n'), /appendTo list|also written by saveAs/);
+});
