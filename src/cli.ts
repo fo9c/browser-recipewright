@@ -6,7 +6,8 @@ import { Command } from 'commander';
 import { chromium } from 'patchright';
 import { validateTemplate } from './validate.js';
 import { loadTemplate, listTemplates, saveTemplate } from './library.js';
-import { Runner, defaultProfile } from './engine.js';
+import { Runner, defaultProfile, coerceInputs } from './engine.js';
+import { render } from './render.js';
 import { connect, launchChrome, getSession, closeSession, disconnect, listSessions, findChrome, refsFile, profilesList, profileDir } from './browser.js';
 import { inpageCall } from './inpage.js';
 import { evalCond } from './conditions.js';
@@ -24,6 +25,23 @@ program.name('browser-rpa').description('Declarative, recordable, self-repairabl
 
 const out = (v: any) => process.stdout.write(JSON.stringify(v, null, 2) + '\n');
 const collect = (v: string, prev: string[]) => [...prev, v];
+
+/** Navigate for interactive commands. Pages that never finish loading (ads, trackers, fingerprint tests) are fine
+ *  as long as the navigation itself happened: warn and carry on instead of failing. */
+async function softGoto(page: any, url: string, timeoutMs = Number(process.env.BROWSER_RPA_NAV_TIMEOUT_MS) || 20000): Promise<string | null> {
+  try {
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    return null;
+  } catch (e: any) {
+    const now = page.url();
+    if (/timeout/i.test(String(e?.message)) && now && now !== 'about:blank') {
+      const w = `page did not finish loading within ${timeoutMs / 1000}s; continuing on ${now}`;
+      log.info(`⚠️ ${w}`);
+      return w;
+    }
+    throw new RpaError('NAVIGATION_FAILED', `could not open ${url}: ${String(e?.message || e).split('\n')[0]}`);
+  }
+}
 
 function parseInputs(pairs: string[] = [], json?: string): Record<string, any> {
   let base: Record<string, any> = {};
@@ -100,12 +118,18 @@ program
   .action(wrap(async (o) => {
     const existing = await getSession(o.profile);
     const s = existing ?? (await launchChrome(o.profile, { headless: o.headless }));
+    let warning: string | null = null;
+    let url: string | null = null;
     if (o.url) {
       const c = await connect(o.profile);
-      await c.page.goto(o.url, { waitUntil: 'domcontentloaded' });
-      await disconnect(c);
+      try {
+        warning = await softGoto(c.page, o.url);
+        url = c.page.url();
+      } finally {
+        await disconnect(c);
+      }
     }
-    out({ status: 'ok', reused: !!existing, session: s });
+    out({ status: 'ok', reused: !!existing, session: s, url, warning });
   }));
 
 program
@@ -129,15 +153,30 @@ program
   .command('login <templateOrSite>')
   .description('open the profile so a human can log in once; waits for the template loginCheck (or Enter)')
   .option('-p, --profile <site/account>', 'profile (default: <site>/default)')
+  .option('-i, --input <key=value>', 'template input used in loginUrl/checkUrl, e.g. base=http://127.0.0.1:4173 (repeatable)', collect, [])
   .action(wrap(async (ref, o) => {
     let tpl: any = null;
     try { tpl = loadTemplate(ref).template; } catch {}
     const site = tpl ? tpl.site[0] : ref.replace(/^https?:\/\//, '').split('/')[0];
     const profile = o.profile || (tpl ? defaultProfile(tpl) : `${site}/default`);
-    const url = tpl?.account?.loginUrl || tpl?.account?.checkUrl || (ref.startsWith('http') ? ref : `https://${site}/`);
+    // templates may build the login URL from inputs ({{inputs.base}}): fill them (defaults + --input) first
+    const scope: any = { inputs: {}, vars: {}, account: {} };
+    if (tpl) {
+      const raw = parseInputs(o.input);
+      const needed = new Set(Object.keys(tpl.inputs || {}));
+      const tplLite = { inputs: Object.fromEntries(Object.entries<any>(tpl.inputs || {}).map(([k, d]) => [k, { ...d, required: d.default !== undefined || k in raw ? d.required : false }])) };
+      for (const k of Object.keys(raw)) if (!needed.has(k)) throw new RpaError('INPUT_INVALID', `unknown input "${k}"`);
+      scope.inputs = coerceInputs(tplLite, raw);
+    }
+    const rawUrl = tpl?.account?.loginUrl || tpl?.account?.checkUrl || (ref.startsWith('http') ? ref : `https://${site}/`);
+    const url = String(render(rawUrl, scope) ?? '');
+    if (!/^https?:\/\/[^/]/.test(url)) {
+      throw new RpaError('INPUT_INVALID', `login URL "${rawUrl}" became "${url}"; pass the missing input, e.g. browser-rpa login ${ref} -i base=http://127.0.0.1:4173`);
+    }
     const c = await connect(profile);
-    await c.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await softGoto(c.page, url);
     await c.page.bringToFront().catch(() => {});
+    log.info(`   ${c.page.url()}`);
     log.info(`\n🔐 请在打开的 Chrome 窗口里登录 ${site}（profile: ${profile}）。`);
     const check = tpl?.account?.loginCheck;
     log.info(check ? '   登录成功后会自动检测到并结束。' : '   登录完成后回到这里按回车。');
@@ -147,7 +186,7 @@ program
     const deadline = Date.now() + 20 * 60 * 1000;
     let loggedIn = false;
     while (Date.now() < deadline && !enter) {
-      if (check && (await evalCond(check, {}, probe).catch(() => ({ pass: false }))).pass) { loggedIn = true; break; }
+      if (check && (await evalCond(check, scope, probe).catch(() => ({ pass: false }))).pass) { loggedIn = true; break; }
       await sleep(1500);
     }
     process.stdin.pause();
@@ -157,6 +196,26 @@ program
   }));
 
 // ---------------- exploration ----------------
+program
+  .command('screenshot')
+  .description('save a PNG of the current page of a running session')
+  .option('-p, --profile <site/account>', 'profile', 'default/default')
+  .option('-u, --url <url>', 'navigate first')
+  .option('-o, --out <file>', 'output file (default: ~/.browser-rpa/screenshots/<profile>-<time>.png)')
+  .option('--full', 'whole page, not just the visible part')
+  .action(wrap(async (o) => {
+    const c = await connect(o.profile);
+    try {
+      const warning = o.url ? await softGoto(c.page, o.url) : null;
+      const file = path.resolve(o.out || path.join(homeDir(), 'screenshots', `${o.profile.replace(/[^\w.-]+/g, '_')}-${new Date().toISOString().replace(/[:.]/g, '-')}.png`));
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      await c.page.screenshot({ path: file, fullPage: !!o.full, timeout: 15000 });
+      out({ status: 'ok', file, url: c.page.url(), title: await c.page.title().catch(() => ''), warning });
+    } finally {
+      await disconnect(c);
+    }
+  }));
+
 program
   .command('snapshot')
   .description('print an outline of the current page with [ref=rN] ids and ready-made locator candidates')
@@ -168,7 +227,7 @@ program
   .action(wrap(async (o) => {
     const c = await connect(o.profile);
     try {
-      if (o.url) await c.page.goto(o.url, { waitUntil: 'domcontentloaded' });
+      if (o.url) await softGoto(c.page, o.url);
       const snap: any = await (c.page as any).evaluate(inpageCall('snapshot', { max: Number(o.max), text: !!o.text }), undefined, undefined, true);
       writeJson(refsFile(o.profile), { url: snap.url, at: new Date().toISOString(), refs: snap.refs });
       if (o.json) out({ status: 'ok', ...snap });
@@ -187,8 +246,10 @@ program
   .option('--step <json>', 'full step JSON (overrides other flags)')
   .option('--url <url>').option('--value <v>').option('--text <t>').option('--key <k>').option('--fields <json>').option('--by <n>').option('--ms <n>')
   .option('--no-humanize', 'plain fast input')
+  .option('--screenshot', 'take a screenshot after the step (path printed as "screenshot")')
   .action(wrap(async (action, o) => {
     let step: any = o.step ? JSON.parse(o.step) : { action };
+    if (o.screenshot) step.screenshot = true;
     step.id ??= 'act';
     step.action ??= action;
     if (o.ref) {
@@ -209,6 +270,8 @@ program
       const res = await runner.run();
       const rec = readSteps(res.runDir).find((s) => s.stepId === step.id);
       const value = res.output?.[step.saveAs] ?? null;
+      const shot = rec?.artifacts?.find((a: string) => a.endsWith('.png'));
+      const screenshot = shot ? path.join(res.runDir, shot) : fs.existsSync(path.join(res.runDir, 'failure', 'screenshot.png')) ? path.join(res.runDir, 'failure', 'screenshot.png') : null;
       if (step.saveAs === '_act_out') delete step.saveAs;
       if (step.action === 'collect' && Array.isArray(value)) {
         // collect: lead with the items and a per-field fill report, so it is obvious what the fields extracted
@@ -228,6 +291,7 @@ program
           items: value,
           fieldsEmpty: missing,
           stats: st,
+          screenshot,
           locator: rec?.locator ?? null,
           url: c.page.url(),
           error: res.error ?? null,
@@ -235,7 +299,7 @@ program
           runDir: res.runDir,
         });
       } else {
-        out({ status: res.status, action: step.action, output: value, locator: rec?.locator ?? null, expect: rec?.expect ?? null, url: c.page.url(), error: res.error ?? null, step, runDir: res.runDir });
+        out({ status: res.status, action: step.action, output: value, screenshot, locator: rec?.locator ?? null, expect: rec?.expect ?? null, url: c.page.url(), error: res.error ?? null, step, runDir: res.runDir });
       }
       if (res.error) process.exitCode = exitCodeFor(res.error.code);
     } finally {
@@ -268,7 +332,7 @@ program
   .option('--no-handoff', 'never wait for a human; fail with LOGIN_REQUIRED / CHALLENGE_DETECTED instead')
   .option('--no-humanize', 'disable humanized mouse/keyboard')
   .option('--screenshots <mode>', 'failure | every | none')
-  .option('--resume <runDir>', 'continue a failed run from its failed top-level step (reuses saved variables)')
+  .option('--resume <runDir>', 'continue a failed or interrupted run: skips finished steps and finished forEach items (reuses saved variables)')
   .option('--handoff-timeout <min>', 'minutes to wait for a human', '15')
   .action(wrap(async (ref, o) => {
     const loaded = loadTemplate(ref);

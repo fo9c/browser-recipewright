@@ -12,6 +12,17 @@ export function startDemoServer(port = 0): Promise<{ url: string; close: () => P
     const u = new URL(req.url || '/', 'http://localhost');
     let p = decodeURIComponent(u.pathname);
     if (p === '/') p = '/home.html';
+    // a page that never finishes loading (like ad-heavy or fingerprint-test pages): its script request hangs
+    if (p === '/slow.html') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end('<!doctype html><title>slow page</title><h1>still loading…</h1><script src="/never.js"></script><p>done</p>');
+      return;
+    }
+    if (p === '/never.js') {
+      const t = setTimeout(() => res.end('/* finally */'), 120000);
+      res.on('close', () => clearTimeout(t));
+      return;
+    }
     if (/^\/[\w-]+\/status\/\d+$/.test(p)) p = '/status.html';
     const file = path.join(root, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
     if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
@@ -29,7 +40,7 @@ export function startDemoServer(port = 0): Promise<{ url: string; close: () => P
     });
     server.listen(port, '127.0.0.1', () => {
       const addr = server.address() as any;
-      resolve({ url: `http://127.0.0.1:${addr.port}`, close: () => new Promise((r) => server.close(() => r())) });
+      resolve({ url: `http://127.0.0.1:${addr.port}`, close: () => new Promise((r) => { server.close(() => r()); (server as any).closeAllConnections?.(); }) });
     });
   });
 }

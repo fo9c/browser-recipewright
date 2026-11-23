@@ -3,6 +3,7 @@
  * on failure write a dossier for the AI → validate outputs.
  */
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import readline from 'node:readline';
 import type { Page } from 'patchright';
@@ -131,6 +132,15 @@ export class Runner {
     this.scope = { inputs: {}, vars: {}, account: opts.account || {} };
   }
 
+  // ---------- checkpoint (state.json) ----------
+  private nextTop = 0;
+  /** forEach progress by step path, so a resume skips iterations that already finished */
+  private loops: Record<string, { next: number; fp: string; results: any[]; failures: any[] }> = {};
+  private resumeLoops: Record<string, any> = {};
+  private persist() {
+    this.rec.saveState({ nextStep: this.nextTop, nextStepId: this.tpl.steps[this.nextTop]?.id ?? null, vars: this.scope.vars, inputs: this.scope.inputs, loops: this.loops });
+  }
+
   // ---------- page probes ----------
   probe(): PageProbe {
     return {
@@ -217,8 +227,18 @@ export class Runner {
     let resumeState: any = null;
     let inputs = this.opts.inputs || {};
     if (this.opts.resumeFrom) {
-      const prev = readJson(path.join(this.opts.resumeFrom, 'run.json'));
-      resumeState = readJson(path.join(this.opts.resumeFrom, 'state.json'));
+      const runFile = path.join(this.opts.resumeFrom, 'run.json');
+      if (!fs.existsSync(runFile)) throw new RpaError('INPUT_INVALID', `--resume: ${this.opts.resumeFrom} is not a run directory (no run.json). List runs with: browser-rpa runs`);
+      const prev = readJson(runFile);
+      const stateFile = path.join(this.opts.resumeFrom, 'state.json');
+      if (fs.existsSync(stateFile)) {
+        resumeState = readJson(stateFile);
+      } else {
+        // the run stopped before any step (e.g. login check or browser start): nothing to skip, start over with its inputs
+        const known = Object.fromEntries(Object.entries<any>(prev.inputs || {}).filter(([, v]) => v !== '***'));
+        resumeState = { nextStep: 0, vars: {}, inputs: known, loops: {} };
+        log.info(`↻ the previous run stopped before its first step (${prev.error?.code ?? 'no checkpoint'}); starting again from step 1 with the same inputs`);
+      }
       inputs = { ...(resumeState.inputs || {}), ...inputs };
       this.opts.profile ??= prev.profile;
     }
@@ -236,6 +256,14 @@ export class Runner {
       options: { humanize: this.humanize, headless: !!this.opts.headless, handoff: this.handoffMode, screenshots: this.screenshots },
     });
     log.info(`▶ ${this.tpl.id}@${this.tpl.version}  profile=${profile}  run=${this.rec.dir}`);
+    if (resumeState) {
+      this.scope.vars = resumeState.vars || {};
+      this.resumeLoops = resumeState.loops || {};
+      this.loops = { ...this.resumeLoops };
+      this.nextTop = resumeState.nextStep || 0;
+    }
+    // checkpoint right away, so even a run that fails before step 1 can be resumed
+    this.persist();
 
     let output: any = null;
     let error: RunResult['error'];
@@ -245,8 +273,7 @@ export class Runner {
       this.page = this.conn.page;
       this.page.on('dialog', (d) => d.dismiss().catch(() => {}));
       if (resumeState) {
-        this.scope.vars = resumeState.vars || {};
-        startIdx = resumeState.nextStep || 0;
+        startIdx = this.nextTop;
         log.info(`↻ resuming at top-level step ${startIdx + 1}/${this.tpl.steps.length} "${this.tpl.steps[startIdx]?.id}" (skipping ${startIdx} finished step(s); from ${this.opts.resumeFrom})`);
         if (this.tpl.account?.loginCheck && !this.opts.skipLoginCheck) await this.loginCheck();
         // put the browser back on the page where the failed step started
@@ -259,7 +286,7 @@ export class Runner {
       } else if (this.tpl.account?.loginCheck && !this.opts.skipLoginCheck) {
         await this.loginCheck();
       }
-      const saveState = (next: number) => this.rec.saveState({ nextStep: next, nextStepId: this.tpl.steps[next]?.id ?? null, vars: this.scope.vars, inputs: this.scope.inputs });
+      const saveState = (next: number) => { this.nextTop = next; this.persist(); };
       for (const v of appendTargets(this.tpl.steps)) if (!Array.isArray(this.scope.vars[v])) this.scope.vars[v] = [];
       saveState(startIdx);
       for (let i = startIdx; i < this.tpl.steps.length; i++) {
@@ -509,9 +536,20 @@ export class Runner {
         if (!Array.isArray(list)) throw new RpaError('STEP_ERROR', `forEach "in" is not an array (got ${typeof list})`);
         const max = Number(render(step.max, scope)) || list.length;
         const innerSaves = collectSaves(step.do);
-        const results: any[] = [];
-        const failures: any[] = [];
-        for (let i = 0; i < Math.min(list.length, max); i++) {
+        let results: any[] = [];
+        let failures: any[] = [];
+        const fp = createHash('sha1').update(JSON.stringify(list)).digest('hex').slice(0, 12);
+        let from = 0;
+        const saved = this.resumeLoops[stepPath];
+        if (saved && saved.fp === fp && saved.next > 0) {
+          from = saved.next;
+          results = [...(saved.results || [])];
+          failures = [...(saved.failures || [])];
+          rec.resumedAtIteration = from;
+          log.info(`    ↻ ${stepPath}: ${from} of ${Math.min(list.length, max)} item(s) already done, continuing at item ${from + 1}`);
+        }
+        delete this.resumeLoops[stepPath];
+        for (let i = from; i < Math.min(list.length, max); i++) {
           for (const k of innerSaves) delete scope.vars[k];
           const s2: Scope = { ...scope, [step.as]: list[i], index: i };
           try {
@@ -523,7 +561,10 @@ export class Runner {
             failures.push({ index: i, code: e.code, message: e.message });
             if (step.collectFrom !== undefined) results.push({ ...(render(step.collectFrom, s2) || {}), _error: { code: e.code, message: e.message } });
           }
+          this.loops[stepPath] = { next: i + 1, fp, results, failures };
+          this.persist();
         }
+        delete this.loops[stepPath];
         rec.note = `${Math.min(list.length, max)} item(s), ${failures.length} failed`;
         if (failures.length) rec.failures = failures;
         if (step.collectFrom === undefined) return null;

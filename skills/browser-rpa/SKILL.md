@@ -28,6 +28,7 @@ If one fits, skip to step 4.
 browser-rpa launch -p x.com/main --url "https://x.com/home"   # opens/reuses that account's Chrome
 browser-rpa snapshot -p x.com/main                              # outline with [ref=rN]
 browser-rpa snapshot -p x.com/main --json                       # same + locator candidates per ref
+browser-rpa screenshot -p x.com/main -o page.png [--full]       # look at the page yourself (PNG); act --screenshot does it after a step
 browser-rpa act click --ref r12 -p x.com/main                   # try ONE step, same semantics as a template step
 browser-rpa act fill --ref r5 --value "hello" -p x.com/main
 browser-rpa act read --ref r20 --fields '{"text":{"text":true}}' -p x.com/main
@@ -39,7 +40,7 @@ browser-rpa act collect --step '{"item":[{"testid":"tweet"}],"fields":{...},"lim
 - Profiles are `<site>/<account>`; each is a separate Chrome user-data-dir with its own login.
 - `snapshot --json` gives, for each ref, candidates already checked to match exactly one element. Copy them into `target`.
 - Prefer navigating by URL (`goto` with `{{inputs.x | urlencode}}`) over typing into search boxes: fewer steps, more stable.
-- If you see a login wall or captcha: stop and ask the human (`browser-rpa login <template> -p <profile>`). Never try to bypass a captcha.
+- If you see a login wall or captcha: stop and ask the human (`browser-rpa login <template> -p <profile>`; if the template's URL uses inputs, pass them: `-i base=...`). Never try to bypass a captcha.
 
 ## 2. Write the template
 
@@ -108,7 +109,7 @@ Other forms: `{"stepId":"x","op":"merge","value":{...}}`, `"op":"replace"` (whol
 ```bash
 browser-rpa patch <template> patch.json           # shows the diff, validates
 browser-rpa patch <template> patch.json --write   # version +1, old version kept in .history/
-browser-rpa run <template> --resume <runDir>      # replays from the failed top-level step with saved variables
+browser-rpa run <template> --resume <runDir>      # skips finished steps and finished forEach items; works even if the run died before step 1
 ```
 Show the human the diff and the verified result. Typical fixes per code are in `references/template-format.md` (error codes table).
 
