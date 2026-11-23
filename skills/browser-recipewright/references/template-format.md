@@ -1,7 +1,7 @@
 # Template format v0 — reference
 
 A template is one JSON file: metadata + inputs + defaults + steps + outputs.
-Machine-readable schema: `schema/template.v0.json` (or `browser-rpa schema`).
+Machine-readable schema: `schema/template.v0.json` (or `browser-recipewright schema`).
 
 ## Top level
 
@@ -91,7 +91,7 @@ Conditions (one key each): `exists`/`notExists`/`visible`/`hidden` (target), `ur
 
 ## Run record
 
-`~/.browser-rpa/runs/<time>_<template>_<rand>/`
+`~/.browser-recipewright/runs/<time>_<template>_<rand>/`
 
 ```
 run.json        template, version, profile, inputs (secrets masked), status, error, duration
@@ -118,12 +118,12 @@ failure/        dossier.json, screenshot.png, snapshot.txt, snapshot.refs.json  
 | `OUTPUT_INVALID` | template | fix field extraction |
 | `SCRIPT_REJECTED` | template | never bypass; human reviews the script |
 | `ASSERT_FAILED` / custom | template | as designed |
-| `LOGIN_REQUIRED` | env | human logs in (`browser-rpa login`) |
+| `LOGIN_REQUIRED` | env | human logs in (`browser-recipewright login`) |
 | `CHALLENGE_DETECTED` | env | human solves it |
 | `HANDOFF_REQUIRED` | env | human action needed in a non-interactive run |
-| `BROWSER_ERROR` | env | `browser-rpa doctor`, close the other Chrome using the profile |
+| `BROWSER_ERROR` | env | `browser-recipewright doctor`, close the other Chrome using the profile |
 
-## Static validation (`browser-rpa validate`)
+## Static validation (`browser-recipewright validate`)
 
 Errors: schema violations, unknown fields/actions, duplicate step ids or `saveAs`, undeclared inputs or variables not yet produced, unknown filters/conditions, loops without limits, `goto` outside `site`, non-whitelisted or modified scripts, optional `runScript`, missing targets.
 Warnings: single or css/xpath-only locators, xpath, `goto`/`click` without `expect`, secret inputs with screenshots, big loops with no step gap, `collect` without `dedupeBy`, URL hosts built from variables.

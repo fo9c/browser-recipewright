@@ -33,16 +33,16 @@ profile and writes its own run record.
 Commands:
 
 ```bash
-browser-rpa batch batch.json --dry-run          # show the job plan
-browser-rpa batch batch.json                    # run
-browser-rpa batch --resume ~/.browser-rpa/batches/<dir>                  # continue; finished jobs are not repeated
-browser-rpa batch --resume ~/.browser-rpa/batches/<dir> --retry-failed   # also rerun failed jobs
+browser-recipewright batch batch.json --dry-run          # show the job plan
+browser-recipewright batch batch.json                    # run
+browser-recipewright batch --resume ~/.browser-recipewright/batches/<dir>                  # continue; finished jobs are not repeated
+browser-recipewright batch --resume ~/.browser-recipewright/batches/<dir> --retry-failed   # also rerun failed jobs
 ```
 
 Batch folder: `batch.json` (with the frozen job plan), `results.jsonl` (one line per finished job),
 `summary.json` + `summary.csv` (status per job, run folder, error code).
 
-Log each account in once beforehand: `browser-rpa login x.com/search-read-posts -p x.com/brand-a`.
+Log each account in once beforehand: `browser-recipewright login x.com/search-read-posts -p x.com/brand-a`.
 
 Platforms forbid coordinated inauthentic behaviour. Use batches for accounts you legitimately operate
 (e.g. several of your own stores or brands), keep spacing and caps conservative, and prefer read-only tasks.

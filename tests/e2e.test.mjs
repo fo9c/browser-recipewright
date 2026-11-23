@@ -11,9 +11,9 @@ import { findChrome } from '../dist/browser.js';
 import { startDemoServer } from '../dist/demo.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const BIN = path.join(ROOT, 'bin', 'browser-rpa.js');
-const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brpa-e2e-'));
-const env = { ...process.env, BROWSER_RPA_HOME: HOME, BROWSER_RPA_NAV_TIMEOUT_MS: '4000' };
+const BIN = path.join(ROOT, 'bin', 'browser-recipewright.js');
+const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brw-e2e-'));
+const env = { ...process.env, BROWSER_RECIPEWRIGHT_HOME: HOME, BROWSER_RECIPEWRIGHT_NAV_TIMEOUT_MS: '4000' };
 // async on purpose: the demo server lives in this process and must keep answering while the CLI runs
 const cli = (...args) =>
   new Promise((resolve) => {

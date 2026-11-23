@@ -1,4 +1,4 @@
-/** Template library: built-in templates (package/templates) + user templates (~/.browser-rpa/templates). */
+/** Template library: built-in templates (package/templates) + user templates (~/.browser-recipewright/templates). */
 import fs from 'node:fs';
 import path from 'node:path';
 import { PKG_ROOT, dirs, readJson, writeJson, ensureDir, RpaError } from './util.js';
@@ -35,7 +35,7 @@ export function loadTemplate(ref: string): LoadedTemplate {
       } catch {}
     }
   }
-  throw new RpaError('TEMPLATE_NOT_FOUND', `template "${ref}" not found (not a file, not in ${dirs.templates()} or built-in library). Try: browser-rpa list`);
+  throw new RpaError('TEMPLATE_NOT_FOUND', `template "${ref}" not found (not a file, not in ${dirs.templates()} or built-in library). Try: browser-recipewright list`);
 }
 
 export function listTemplates() {
@@ -60,7 +60,7 @@ export function listTemplates() {
 export function saveTemplate(file: string): string {
   const t = readJson(file);
   const v = validateTemplate(t);
-  if (!v.ok) throw new RpaError('TEMPLATE_INVALID', `template has ${v.errors.length} error(s); run browser-rpa validate first`);
+  if (!v.ok) throw new RpaError('TEMPLATE_INVALID', `template has ${v.errors.length} error(s); run browser-recipewright validate first`);
   const dest = path.join(dirs.templates(), t.id + '.json');
   if (fs.existsSync(dest)) {
     const old = readJson(dest);

@@ -1,4 +1,4 @@
-"""python -m browser_rpa export <runDir> [out.csv]  — export a run's output to CSV (Excel-friendly)."""
+"""python -m browser_recipewright export <runDir> [out.csv]  — export a run's output to CSV (Excel-friendly)."""
 import sys
 from pathlib import Path
 from . import load_run, to_csv, flatten_posts

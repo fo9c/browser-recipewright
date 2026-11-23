@@ -1,6 +1,6 @@
-"""Thin Python helpers around the browser-rpa CLI.
+"""Thin Python helpers around the browser-recipewright CLI.
 
-    from browser_rpa import run, load_run, to_csv
+    from browser_recipewright import run, load_run, to_csv
     res = run("x.com/search-read-posts", {"keyword": "AI agent", "count": 3})
     rows = res.output            # list of dicts from output.json
     to_csv(rows, "posts.csv")    # nested values are JSON-encoded
@@ -40,13 +40,13 @@ class RunResult:
 
 
 def _cmd() -> list[str]:
-    exe = os.environ.get("BROWSER_RPA_BIN") or shutil.which("browser-rpa")
+    exe = os.environ.get("BROWSER_RECIPEWRIGHT_BIN") or shutil.which("browser-recipewright")
     if exe:
         return [exe]
-    repo_bin = Path(__file__).resolve().parents[2] / "bin" / "browser-rpa.js"
+    repo_bin = Path(__file__).resolve().parents[2] / "bin" / "browser-recipewright.js"
     if repo_bin.exists():
         return ["node", str(repo_bin)]
-    return ["npx", "browser-rpa"]
+    return ["npx", "browser-recipewright"]
 
 
 def _call(args: list[str]) -> tuple[int, dict]:

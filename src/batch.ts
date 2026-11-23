@@ -179,7 +179,7 @@ export async function runBatch(opts: { file?: string; resumeDir?: string; retryF
     }
     fs.appendFileSync(resultsFile, JSON.stringify(result) + '\n');
     if (result.status === 'paused') {
-      stopped = `challenge on account ${job.account.id}; batch paused. Fix it in the browser, then: browser-rpa batch --resume "${dir}"`;
+      stopped = `challenge on account ${job.account.id}; batch paused. Fix it in the browser, then: browser-recipewright batch --resume "${dir}"`;
       break;
     }
   }

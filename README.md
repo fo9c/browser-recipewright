@@ -1,6 +1,8 @@
-# browser-rpa
+# browser-recipewright
 
-**给 AI Agent 用的浏览器 RPA：把一次网页操作变成一份可审查、可重放、坏了能自己修的 JSON 流程模板。**
+**AI 写配方，浏览器照着做。**
+
+AI 自己探索网页，把一次网页任务写成一份可复用的“配方”（声明式 JSON 流程模板）；之后由真实 Chrome 以拟人、低特征的方式照着配方执行，每一步都有记录，坏了只修出问题的那一步。适合个人自动化和数据采集分析。
 
 [English](README.en.md) · 许可证 Apache-2.0
 
@@ -10,28 +12,28 @@
 - **坏了只修那一步**：AI 读现场档案，写一个只针对失败步骤 id 的补丁，`patch` 显示改动对比，`--resume` 从失败处续跑验证。
 - **登录和验证码交给人**：遇到未登录或验证码会暂停，把窗口交给你，处理完自动继续；AI 不会去改模板、也不会尝试绕过验证码。
 - **多账号批量**：账号清单 × 模板 × 每账号参数，带间隔、每日上限、跳过登录失效账号、每账号独立记录、断点续跑。
-- **不绑定 Agent**：主要以 Skill 形式分发（`skills/browser-rpa/SKILL.md`），任何能运行命令行的 Agent 都能用。
+- **不绑定 Agent**：主要以 Skill 形式分发（`skills/browser-recipewright/SKILL.md`），任何能运行命令行的 Agent 都能用。
 
 > 第一次使用请看 **[Mac 上手指南](docs/getting-started.zh.md)**（10 分钟：安装 → 离线演示 → 登录 X → 跑 M1 模板）。
 
 ## 快速体验
 
 ```bash
-git clone https://github.com/fo9c/browser-rpa.git
-cd browser-rpa
+git clone https://github.com/fo9c/browser-recipewright.git
+cd browser-recipewright
 npm install          # 会自动编译
-npm link             # 之后就能直接用 browser-rpa 命令
+npm link             # 之后就能直接用 browser-recipewright 命令
 
-browser-rpa doctor   # 自检：Node、Chrome、navigator.webdriver
-browser-rpa demo     # 离线演示：一个模仿 X 结构的本地无限滚动页面
+browser-recipewright doctor   # 自检：Node、Chrome、navigator.webdriver
+browser-recipewright demo     # 离线演示：一个模仿 X 结构的本地无限滚动页面
 ```
 
 在 X 上跑 M1 场景（搜索关键词 → 滚动找 5 条点赞 ≥50 的帖子 → 逐条读正文和评论）：
 
 ```bash
-browser-rpa login x.com/search-read-posts                 # 第一次：在弹出的窗口里登录 X，登录成功会自动检测到
-browser-rpa run x.com/search-read-posts -i keyword="AI agent"
-browser-rpa run x.com/search-read-posts -i keyword="RPA" -i count=3 -i minLikes=200 -i tab=live
+browser-recipewright login x.com/search-read-posts                 # 第一次：在弹出的窗口里登录 X，登录成功会自动检测到
+browser-recipewright run x.com/search-read-posts -i keyword="AI agent"
+browser-recipewright run x.com/search-read-posts -i keyword="RPA" -i count=3 -i minLikes=200 -i tab=live
 ```
 
 结果在命令输出的 `output` 路径里（`output.json`），完整记录在 `runDir`。
@@ -40,11 +42,11 @@ browser-rpa run x.com/search-read-posts -i keyword="RPA" -i count=3 -i minLikes=
 
 ```bash
 mkdir -p ~/.claude/skills
-ln -s "$(pwd)/skills/browser-rpa" ~/.claude/skills/browser-rpa
+ln -s "$(pwd)/skills/browser-recipewright" ~/.claude/skills/browser-recipewright
 ```
 
-然后直接对 Claude 说："用 browser-rpa 在 X 上搜 'AI agent'，找 5 条点赞过 100 的帖子，读正文和前 10 条评论"。
-其他 Agent（Codex、Cursor、自研 Agent）把 `skills/browser-rpa/SKILL.md` 的内容放进系统提示或规则文件即可。
+然后直接对 Claude 说："用 browser-recipewright 在 X 上搜 'AI agent'，找 5 条点赞过 100 的帖子，读正文和前 10 条评论"。
+其他 Agent（Codex、Cursor、自研 Agent）把 `skills/browser-recipewright/SKILL.md` 的内容放进系统提示或规则文件即可。
 
 ## 工作方式
 
@@ -81,9 +83,9 @@ ln -s "$(pwd)/skills/browser-rpa" ~/.claude/skills/browser-rpa
 ## 文档
 
 - [Mac 上手指南](docs/getting-started.zh.md)
-- [模板格式参考（动作、定位器、条件、运行记录、错误码）](skills/browser-rpa/references/template-format.md)
-- [多账号批量](skills/browser-rpa/references/batch.md)
-- [Skill 说明（给 AI 看的）](skills/browser-rpa/SKILL.md)
+- [模板格式参考（动作、定位器、条件、运行记录、错误码）](skills/browser-recipewright/references/template-format.md)
+- [多账号批量](skills/browser-recipewright/references/batch.md)
+- [Skill 说明（给 AI 看的）](skills/browser-recipewright/SKILL.md)
 - [架构说明](docs/architecture.md)
 - Python 小工具：[`python/`](python/README.md)
 

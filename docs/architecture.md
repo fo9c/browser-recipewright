@@ -1,12 +1,12 @@
 # Architecture
 
 ```
-skills/browser-rpa/SKILL.md      how an agent should use the CLI (explore → write → validate → run → heal)
+skills/browser-recipewright/SKILL.md      how an agent should use the CLI (explore → write → validate → run → heal)
         │
         ▼
 src/cli.ts                       commands; JSON on stdout, progress on stderr, exit codes 0/1/2/3
         │
-        ├── library.ts           template library (built-in + ~/.browser-rpa/templates)
+        ├── library.ts           template library (built-in + ~/.browser-recipewright/templates)
         ├── validate.ts          static checks (schema.ts zod schemas + references, loops, domains, scripts)
         ├── engine.ts            Runner: login check → steps → records → outputs
         │     ├── locator.ts     candidate locators → exactly-one element (patchright locators)

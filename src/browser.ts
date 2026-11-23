@@ -41,7 +41,7 @@ export function refsFile(profile: string) {
 }
 
 export function findChrome(): string | null {
-  const env = process.env.BROWSER_RPA_CHROME || process.env.CHROME_PATH;
+  const env = process.env.BROWSER_RECIPEWRIGHT_CHROME || process.env.BROWSER_RPA_CHROME || process.env.CHROME_PATH;
   if (env && fs.existsSync(env)) return env;
   const candidates: string[] = [];
   if (process.platform === 'darwin') {
@@ -114,7 +114,7 @@ export async function listSessions(): Promise<SessionInfo[]> {
 /** Launch a fresh Chrome for this profile (detached, so it can outlive the CLI call). */
 export async function launchChrome(profile: string, opts: { headless?: boolean; url?: string } = {}): Promise<SessionInfo> {
   const chrome = findChrome();
-  if (!chrome) throw new RpaError('BROWSER_ERROR', 'Google Chrome not found. Install Chrome, or set BROWSER_RPA_CHROME=/path/to/chrome');
+  if (!chrome) throw new RpaError('BROWSER_ERROR', 'Google Chrome not found. Install Chrome, or set BROWSER_RECIPEWRIGHT_CHROME=/path/to/chrome');
   const userDataDir = ensureDir(profileDir(profile));
   const portFile = path.join(userDataDir, 'DevToolsActivePort');
   fs.rmSync(portFile, { force: true });
@@ -151,7 +151,7 @@ export async function launchChrome(profile: string, opts: { headless?: boolean; 
     try { if (child.pid) process.kill(child.pid); } catch {}
     throw new RpaError(
       'BROWSER_ERROR',
-      `Chrome did not start for profile "${profile}". If a Chrome window is already open with this profile, close it (or run: browser-rpa close --profile ${profile}) and retry.`,
+      `Chrome did not start for profile "${profile}". If a Chrome window is already open with this profile, close it (or run: browser-recipewright close --profile ${profile}) and retry.`,
     );
   }
   const info: SessionInfo = { profile, port, pid: child.pid!, userDataDir, headless: !!opts.headless, startedAt: new Date().toISOString(), chrome };

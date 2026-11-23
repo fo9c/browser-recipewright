@@ -228,7 +228,7 @@ export class Runner {
     let inputs = this.opts.inputs || {};
     if (this.opts.resumeFrom) {
       const runFile = path.join(this.opts.resumeFrom, 'run.json');
-      if (!fs.existsSync(runFile)) throw new RpaError('INPUT_INVALID', `--resume: ${this.opts.resumeFrom} is not a run directory (no run.json). List runs with: browser-rpa runs`);
+      if (!fs.existsSync(runFile)) throw new RpaError('INPUT_INVALID', `--resume: ${this.opts.resumeFrom} is not a run directory (no run.json). List runs with: browser-recipewright runs`);
       const prev = readJson(runFile);
       const stateFile = path.join(this.opts.resumeFrom, 'state.json');
       if (fs.existsSync(stateFile)) {
@@ -382,11 +382,11 @@ export class Runner {
       locatorDrift: locatorDrift(this.tpl.id),
       next:
         errorCategory(err.code) === 'env'
-          ? ['Environment problem: do not edit the template. Ask the human to fix login / captcha, then resume:', `browser-rpa run "${tplPath}" --resume "${this.rec.dir}"`]
+          ? ['Environment problem: do not edit the template. Ask the human to fix login / captcha, then resume:', `browser-recipewright run "${tplPath}" --resume "${this.rec.dir}"`]
           : [
               '1. Read failure/snapshot.txt (refs in snapshot.refs.json give ready-made locator candidates).',
-              `2. Write a patch for step "${step?.id ?? '?'}" only, then: browser-rpa patch "${tplPath}" patch.json --write`,
-              `3. Verify from the failed top-level step: browser-rpa run "${tplPath}" --resume "${this.rec.dir}"`,
+              `2. Write a patch for step "${step?.id ?? '?'}" only, then: browser-recipewright patch "${tplPath}" patch.json --write`,
+              `3. Verify from the failed top-level step: browser-recipewright run "${tplPath}" --resume "${this.rec.dir}"`,
             ],
     };
     writeJson(path.join(fdir, 'dossier.json'), dossier);

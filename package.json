@@ -1,16 +1,15 @@
 {
-  "name": "browser-rpa",
+  "name": "browser-recipewright",
   "version": "0.1.2",
-  "description": "Agent-agnostic browser RPA: AI or humans author declarative JSON workflow templates; a stealthy CDP executor (patchright + real Chrome) replays them deterministically and records every step for AI self-repair.",
+  "description": "AI writes the recipe, the browser follows it: AI-authored, reusable browser recipes (declarative JSON) replayed in real Chrome with human-like, low-signature input, step records and scoped self-repair.",
   "type": "module",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fo9c/browser-rpa.git"
+    "url": "git+https://github.com/fo9c/browser-recipewright.git"
   },
-  "homepage": "https://github.com/fo9c/browser-rpa#readme",
+  "homepage": "https://github.com/fo9c/browser-recipewright#readme",
   "keywords": [
-    "rpa",
     "browser-automation",
     "agent",
     "skill",
@@ -18,10 +17,12 @@
     "patchright",
     "cdp",
     "workflow",
-    "scraping"
+    "scraping",
+    "rpa",
+    "recipes"
   ],
   "bin": {
-    "browser-rpa": "bin/browser-rpa.js"
+    "browser-recipewright": "bin/browser-recipewright.js"
   },
   "files": [
     "bin",
@@ -46,7 +47,7 @@
     "test": "node --test tests/unit.test.mjs tests/e2e.test.mjs",
     "test:e2e": "node --test tests/e2e.test.mjs",
     "test:unit": "node --test tests/unit.test.mjs",
-    "schema": "node bin/browser-rpa.js schema > schema/template.v0.json"
+    "schema": "node bin/browser-recipewright.js schema > schema/template.v0.json"
   },
   "dependencies": {
     "commander": "^15.1.0",

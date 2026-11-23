@@ -21,7 +21,13 @@ export function pickMs(v: number | [number, number] | undefined, fallback = 0): 
 export const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export function homeDir(): string {
-  return process.env.BROWSER_RPA_HOME || path.join(os.homedir(), '.browser-rpa');
+  const env = process.env.BROWSER_RECIPEWRIGHT_HOME || process.env.BROWSER_RPA_HOME;
+  if (env) return env;
+  const home = path.join(os.homedir(), '.browser-recipewright');
+  // renamed from browser-rpa: keep using the old data folder (logins, runs, templates) until it is moved
+  const legacy = path.join(os.homedir(), '.browser-rpa');
+  if (!fs.existsSync(home) && fs.existsSync(legacy)) return legacy;
+  return home;
 }
 
 export const dirs = {

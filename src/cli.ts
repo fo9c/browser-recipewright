@@ -1,4 +1,4 @@
-/** browser-rpa command line. Progress goes to stderr; the final result is JSON on stdout (agent-friendly). */
+/** browser-recipewright command line. Progress goes to stderr; the final result is JSON on stdout (agent-friendly). */
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -21,14 +21,14 @@ import { readJson, writeJson, homeDir, dirs, log, sleep, RpaError, PKG_ROOT } fr
 
 const pkg = readJson(path.join(PKG_ROOT, 'package.json'));
 const program = new Command();
-program.name('browser-rpa').description('Declarative, recordable, self-repairable browser RPA for AI agents and humans').version(pkg.version);
+program.name('browser-recipewright').description('AI writes the recipe, the browser follows it: reusable, recorded, self-repairable browser recipes').version(pkg.version);
 
 const out = (v: any) => process.stdout.write(JSON.stringify(v, null, 2) + '\n');
 const collect = (v: string, prev: string[]) => [...prev, v];
 
 /** Navigate for interactive commands. Pages that never finish loading (ads, trackers, fingerprint tests) are fine
  *  as long as the navigation itself happened: warn and carry on instead of failing. */
-async function softGoto(page: any, url: string, timeoutMs = Number(process.env.BROWSER_RPA_NAV_TIMEOUT_MS) || 20000): Promise<string | null> {
+async function softGoto(page: any, url: string, timeoutMs = Number(process.env.BROWSER_RECIPEWRIGHT_NAV_TIMEOUT_MS) || 20000): Promise<string | null> {
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
     return null;
@@ -83,7 +83,7 @@ program
     const major = Number(process.versions.node.split('.')[0]);
     ok('node', major >= 18, process.versions.node);
     const chrome = findChrome();
-    ok('chrome', !!chrome, chrome || 'not found — install Google Chrome or set BROWSER_RPA_CHROME');
+    ok('chrome', !!chrome, chrome || 'not found — install Google Chrome or set BROWSER_RECIPEWRIGHT_CHROME');
     try { fs.mkdirSync(homeDir(), { recursive: true }); fs.accessSync(homeDir(), fs.constants.W_OK); ok('data folder', true, homeDir()); } catch (e: any) { ok('data folder', false, e.message); }
     if (chrome) {
       const profile = `_doctor/${Date.now()}`;
@@ -171,7 +171,7 @@ program
     const rawUrl = tpl?.account?.loginUrl || tpl?.account?.checkUrl || (ref.startsWith('http') ? ref : `https://${site}/`);
     const url = String(render(rawUrl, scope) ?? '');
     if (!/^https?:\/\/[^/]/.test(url)) {
-      throw new RpaError('INPUT_INVALID', `login URL "${rawUrl}" became "${url}"; pass the missing input, e.g. browser-rpa login ${ref} -i base=http://127.0.0.1:4173`);
+      throw new RpaError('INPUT_INVALID', `login URL "${rawUrl}" became "${url}"; pass the missing input, e.g. browser-recipewright login ${ref} -i base=http://127.0.0.1:4173`);
     }
     const c = await connect(profile);
     await softGoto(c.page, url);
@@ -201,7 +201,7 @@ program
   .description('save a PNG of the current page of a running session')
   .option('-p, --profile <site/account>', 'profile', 'default/default')
   .option('-u, --url <url>', 'navigate first')
-  .option('-o, --out <file>', 'output file (default: ~/.browser-rpa/screenshots/<profile>-<time>.png)')
+  .option('-o, --out <file>', 'output file (default: ~/.browser-recipewright/screenshots/<profile>-<time>.png)')
   .option('--full', 'whole page, not just the visible part')
   .action(wrap(async (o) => {
     const c = await connect(o.profile);
@@ -363,7 +363,7 @@ program
 
 program
   .command('save <file>')
-  .description('validate and copy a template into your library (~/.browser-rpa/templates)')
+  .description('validate and copy a template into your library (~/.browser-recipewright/templates)')
   .action(wrap(async (file) => out({ status: 'ok', saved: saveTemplate(file) })));
 
 program

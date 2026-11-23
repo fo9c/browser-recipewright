@@ -1,9 +1,9 @@
 {
-  "$schema": "https://raw.githubusercontent.com/fo9c/browser-rpa/main/schema/template.v0.json",
+  "$schema": "https://raw.githubusercontent.com/fo9c/browser-recipewright/main/schema/template.v0.json",
   "id": "demo/local-feed",
   "version": "0.1.0",
   "title": "Demo: search the bundled offline feed and read N qualifying posts with replies",
-  "description": "Same structure as x.com/search-read-posts, but against the local demo site (browser-rpa demo). Use it to check your install and to practise snapshot / act / patch.",
+  "description": "Same structure as x.com/search-read-posts, but against the local demo site (browser-recipewright demo). Use it to check your install and to practise snapshot / act / patch.",
   "tags": [
     "demo",
     "offline"

@@ -195,8 +195,8 @@ export function buildJsonSchema(): any {
   }
   return {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
-    $id: 'https://raw.githubusercontent.com/fo9c/browser-rpa/main/schema/template.v0.json',
-    title: 'browser-rpa template v0',
+    $id: 'https://raw.githubusercontent.com/fo9c/browser-recipewright/main/schema/template.v0.json',
+    title: 'browser-recipewright template v0',
     ...root,
     $defs: { ...(root.$defs || {}), ...defs },
   };

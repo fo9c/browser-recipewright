@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/fo9c/browser-rpa/main/schema/template.v0.json",
+  "$schema": "https://raw.githubusercontent.com/fo9c/browser-recipewright/main/schema/template.v0.json",
   "id": "x.com/search-read-posts",
   "version": "0.1.0",
   "title": "在 X 上搜索关键词，读取 N 条达标帖子的正文和评论 / Search X, read N qualifying posts with replies",

@@ -1,7 +1,7 @@
 [project]
-name = "browser-rpa"
+name = "browser-recipewright"
 version = "0.1.0"
-description = "Python helpers for the browser-rpa CLI: run templates, read run records, export CSV"
+description = "Python helpers for the browser-recipewright CLI: run templates, read run records, export CSV"
 requires-python = ">=3.9"
 license = { text = "Apache-2.0" }
 
@@ -10,4 +10,4 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["browser_rpa"]
+packages = ["browser_recipewright"]
