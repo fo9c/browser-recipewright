@@ -1,6 +1,6 @@
 /** Humanized input on top of CDP trusted events: curved mouse paths, jittered timing, chunked wheel scrolling. */
 import type { Page, Locator } from 'patchright';
-import { sleep, randInt } from './util.js';
+import { sleep, randInt, log } from './util.js';
 
 const mousePos = new WeakMap<Page, { x: number; y: number }>();
 
@@ -34,6 +34,37 @@ async function pointIn(locator: Locator, timeout: number) {
   return { x: box.x + box.width / 2 + (Math.random() * 2 - 1) * jx, y: box.y + box.height / 2 + (Math.random() * 2 - 1) * jy };
 }
 
+/**
+ * Runs inside the page: is the element (or something inside it) really the topmost thing at (x, y)?
+ * x/y and bx/by come from boundingBox(), which is relative to the top-level page; the element may sit in
+ * an iframe, so the point is first shifted into the element's own frame.
+ */
+const HIT_TEST = (el: any, a: { x: number; y: number; bx: number; by: number }) => {
+  const r = el.getBoundingClientRect();
+  const x = a.x - (a.bx - r.left), y = a.y - (a.by - r.top);
+  const root = el.getRootNode();
+  const hit = (root && root.elementFromPoint ? root : el.ownerDocument).elementFromPoint(x, y);
+  if (!hit) return false;
+  for (let n = hit; n; n = n.parentNode || n.host) if (n === el) return true;
+  // clicking a <label> activates its control, so a label covering the target is fine
+  if (hit.control === el) return true;
+  if (el.labels) for (const l of Array.from(el.labels) as any[]) if (l.contains(hit)) return true;
+  return false;
+};
+
+/**
+ * After the mouse has travelled to the point, check again that the point is still on the target.
+ * The mouse move takes a few hundred ms; if the user scrolled, resized or zoomed the window meanwhile,
+ * or the page shifted, the old point may now be on something else.
+ */
+async function stillOnTarget(locator: Locator, pt: { x: number; y: number }): Promise<boolean> {
+  const box = await locator.boundingBox({ timeout: 2000 }).catch(() => null);
+  if (!box) return false;
+  if (pt.x < box.x + 1 || pt.x > box.x + box.width - 1 || pt.y < box.y + 1 || pt.y > box.y + box.height - 1) return false;
+  // if the hit test itself cannot run (unusual frames), fall back to the box check above
+  return (locator as any).evaluate(HIT_TEST, { x: pt.x, y: pt.y, bx: box.x, by: box.y }, undefined, true).catch(() => true);
+}
+
 export async function click(page: Page, locator: Locator, opts: { humanize: boolean; timeout: number; button?: 'left' | 'right' | 'middle'; clickCount?: number }) {
   if (!opts.humanize) {
     await locator.click({ timeout: opts.timeout, button: opts.button, clickCount: opts.clickCount });
@@ -41,20 +72,27 @@ export async function click(page: Page, locator: Locator, opts: { humanize: bool
   }
   // trial: runs Playwright's actionability checks (visible, stable, enabled, not covered) without clicking
   await locator.click({ trial: true, timeout: opts.timeout });
-  const pt = await pointIn(locator, opts.timeout);
-  if (!pt) {
-    await locator.click({ timeout: opts.timeout, button: opts.button });
+  for (let aim = 1; aim <= 3; aim++) {
+    const pt = await pointIn(locator, opts.timeout);
+    if (!pt) break;
+    await moveMouse(page, pt.x, pt.y);
+    await sleep(randInt(60, 180));
+    if (!(await stillOnTarget(locator, pt))) {
+      log.info(`    ↺ target moved or got covered while the mouse was on its way; aiming again (${aim}/3)`);
+      continue;
+    }
+    const n = opts.clickCount ?? 1;
+    for (let i = 0; i < n; i++) {
+      await page.mouse.down({ button: opts.button, clickCount: i + 1 });
+      await sleep(randInt(40, 110));
+      await page.mouse.up({ button: opts.button, clickCount: i + 1 });
+      if (i < n - 1) await sleep(randInt(60, 120));
+    }
     return;
   }
-  await moveMouse(page, pt.x, pt.y);
-  await sleep(randInt(60, 180));
-  const n = opts.clickCount ?? 1;
-  for (let i = 0; i < n; i++) {
-    await page.mouse.down({ button: opts.button, clickCount: i + 1 });
-    await sleep(randInt(40, 110));
-    await page.mouse.up({ button: opts.button, clickCount: i + 1 });
-    if (i < n - 1) await sleep(randInt(60, 120));
-  }
+  // the page keeps changing under the mouse: let Playwright check and click in one quick go,
+  // rather than pressing the mouse on a point that may now be something else
+  await locator.click({ timeout: opts.timeout, button: opts.button, clickCount: opts.clickCount });
 }
 
 export async function hover(page: Page, locator: Locator, opts: { humanize: boolean; timeout: number }) {
