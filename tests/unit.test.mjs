@@ -146,3 +146,13 @@ test('merge pages: flatten filter, forEach.flatten and appendTo validate', () =>
   ] });
   assert.match(clash.errors.map((e) => e.message).join('\n'), /appendTo list|also written by saveAs/);
 });
+
+test('Chrome flags keep minimized / covered / background windows at full speed', async () => {
+  const { chromeArgs } = await import('../dist/browser.js');
+  const args = chromeArgs('/tmp/x', { url: 'about:blank' });
+  for (const f of ['--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-blink-features=AutomationControlled'])
+    assert.ok(args.includes(f), f);
+  assert.equal(args.at(-1), 'about:blank');
+  assert.ok(!args.includes('--headless=new'));
+  assert.ok(chromeArgs('/tmp/x', { headless: true }).includes('--headless=new'));
+});
