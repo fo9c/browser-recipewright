@@ -1,10 +1,58 @@
+<div align="center">
+
 # browser-recipewright
 
-**AI 写配方，浏览器照着做。**
+**为 AI 打造的高效 RPA：AI 写配方，浏览器照着做。**
 
-AI 自己探索网页，把一次网页任务写成一份可复用的“配方”（声明式 JSON 流程模板）；之后由真实 Chrome 以拟人、低特征的方式照着配方执行，每一步都有记录，坏了只修出问题的那一步。适合个人自动化和数据采集分析。
+AI 探索一次网页，写下一份可复用的「配方」；之后真实 Chrome 照着配方拟人化执行，不再消耗模型调用。<br>
+每一步都有记录，网站改版时只修坏掉的那一步。适合个人自动化和数据分析。
 
-[English](README.en.md) · 许可证 Apache-2.0
+[![CI](https://github.com/fo9c/browser-recipewright/actions/workflows/ci.yml/badge.svg)](https://github.com/fo9c/browser-recipewright/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Node >= 18.17](https://img.shields.io/badge/node-%3E%3D18.17-339933?logo=node.js&logoColor=white)](package.json)
+[![Agent Skill](https://img.shields.io/badge/Agent%20Skill-Claude%20Code%20%7C%20Codex%20%7C%20Cursor-8A63D2)](skills/browser-recipewright/SKILL.md)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+[English](README.en.md) · [快速体验](#快速体验) · [Mac 上手指南](docs/getting-started.zh.md) · [配方示例](examples/) · [更新日志](CHANGELOG.md)
+
+</div>
+
+<!-- TODO: 演示动图 docs/assets/demo.gif（AI 探索 → 生成配方 → 浏览器回放 + 实时可视化），录好后替换这一行 -->
+
+## 一句话理解
+
+> 你对 AI 说「在 X 上搜 AI agent，找 5 条点赞过 100 的帖子，读正文和评论」。
+> AI 第一次自己摸索页面，把做法写成一份 JSON 配方；以后同样的事，浏览器直接照配方做，**快、稳、可复查**。
+
+```
+  ① 探索（AI 看页面、试点击）  →  ② 配方（声明式 JSON，可校验、可审阅）  →  ③ 回放（真实 Chrome，逐步记录）
+                                              ▲                                        │ 网站改版
+                                              └──── ④ 只修失败的那一步（补丁 + 续跑） ◀──┘
+```
+
+## 已验证的数据
+
+| 场景 | 结果 |
+|---|---|
+| X（推特）关键词搜索 → 读 5 条帖子 + 评论 | 真实账号连续 **20 / 20 次成功**，未触发验证码（2026-11-23） |
+| 浏览器指纹自检（bot.sannysoft.com） | 各项检查通过 |
+| Boss直聘：按城市 / 行业读 30 个职位，筛出 3 个（只读） | 一次跑通（2026-11-24） |
+| 自动化测试 | 单元 12 + 端到端 10（真实 Chrome + 离线演示站），每次提交在 CI 上跑 |
+
+> 以上是个人自动化场景下的实测，不代表任何网站"无法检测"。请遵守[负责任使用说明](docs/responsible-use.md)。
+
+## 和其他方式比
+
+| | 每步都问大模型的浏览器 Agent | 传统 RPA（录制回放） | 手写 Playwright 脚本 | **browser-recipewright** |
+|---|---|---|---|---|
+| 谁来写流程 | 不写，每次现场推理 | 人录制 / 拖拽 | 程序员写代码 | **AI 写一次配方，人可审阅** |
+| 重复执行的模型成本 | 每一步都要调用 | 无 | 无 | **无（回放不调用模型）** |
+| 流程能否静态检查、安全分享 | 没有固定流程 | 多为私有格式 | 是任意代码，需审查 | **声明式 JSON + Schema 校验，脚本白名单** |
+| 网站改版后 | 现场重新推理 | 人工重录 | 人工改代码 | **现场档案 + 只修失败那一步** |
+| 每步可追溯 | 视实现而定 | 部分 | 自己加日志 | **每步一行记录，失败自动打包现场** |
+| 需要的 API Key | 需要 | 不需要 | 不需要 | **工具本身不需要（用你已有的 Agent）** |
+
+## 特点
 
 - **一份模板，三种读者**：AI 写、人审、执行器跑。模板是声明式 JSON（20 个原子动作 + 4 个控制流），能在不开浏览器的情况下静态校验。
 - **真浏览器、低特征**：用你电脑上的 Google Chrome，干净的启动参数（没有 `--enable-automation`），通过 [patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) 走 CDP 连接；页面内脚本在隔离环境运行；鼠标和键盘是可信事件并带拟人化轨迹；每个站点每个账号一个独立的 Chrome Profile，登录一次长期有效。
@@ -103,9 +151,22 @@ python/         Python 小工具（调用 CLI、读运行记录、导出 CSV）
 tests/          单元测试 + 端到端测试（真实 Chrome + 演示站）
 ```
 
+## 路线图
+
+- [x] 声明式配方格式 v0、静态校验、拟人化执行器、运行记录与现场档案
+- [x] 按步骤补丁 + 续跑、多账号批量、Skill 分发
+- [ ] 实时可视化面板：执行时同步展示网页、事件流和数据流，可回放
+- [ ] 无障碍树（AX tree）优先的定位器，CSS / 文本兜底
+- [ ] 更多只读示例配方（欢迎[贡献](CONTRIBUTING.md)）
+- [ ] 发布到 npm，`npx browser-recipewright` 一键体验
+
+## 参与
+
+欢迎提 Issue 和 PR，尤其是新配方。请先看 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
+
 ## 边界
 
-只用于你有权使用的账号和数据，遵守网站条款和频率限制。不做验证码破解、不收集密码、不做群发。多账号功能面向合规的多店铺/多品牌运营；平台禁止协同的虚假行为。
+只用于你有权使用的账号和数据，遵守网站条款和频率限制。不做验证码破解、不收集密码、不做群发。多账号功能面向合规的多店铺/多品牌运营；平台禁止协同的虚假行为。详见[负责任使用说明](docs/responsible-use.md)。
 
 ## 许可证
 
