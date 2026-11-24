@@ -4,6 +4,30 @@ import { sleep, randInt, log } from './util.js';
 
 const mousePos = new WeakMap<Page, { x: number; y: number }>();
 
+/**
+ * Optional observer of the humanized input on a page (the executor turns these into pointer.* / key.type events
+ * for viewer plugins). It only reports what already happened: it never changes timing or behaviour.
+ * Coordinates are CSS pixels relative to the page viewport. Typed text is never reported, only its length.
+ */
+export interface InputObserver {
+  move?(to: { x: number; y: number }, from: { x: number; y: number }, ms: number): void;
+  click?(at: { x: number; y: number }, button: string, count: number): void;
+  wheel?(dy: number, at: { x: number; y: number } | null): void;
+  type?(chars: number): void;
+}
+const observers = new WeakMap<Page, InputObserver>();
+export function observeInput(page: Page, obs: InputObserver | null) {
+  if (obs) observers.set(page, obs);
+  else observers.delete(page);
+}
+function notify(page: Page, fn: (o: InputObserver) => void) {
+  const o = observers.get(page);
+  if (!o) return;
+  try {
+    fn(o);
+  } catch {}
+}
+
 function bezier(p0: number, p1: number, p2: number, p3: number, t: number) {
   const u = 1 - t;
   return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
@@ -14,6 +38,7 @@ export async function moveMouse(page: Page, x: number, y: number) {
   const from = mousePos.get(page) ?? { x: randInt(vp.width * 0.3, vp.width * 0.7), y: randInt(vp.height * 0.3, vp.height * 0.7) };
   const dist = Math.hypot(x - from.x, y - from.y);
   const steps = Math.max(8, Math.min(40, Math.round(dist / 14)));
+  const t0 = Date.now();
   const spread = Math.min(120, dist * 0.3);
   const c1 = { x: from.x + (x - from.x) * 0.3 + randInt(-spread, spread), y: from.y + (y - from.y) * 0.3 + randInt(-spread, spread) };
   const c2 = { x: from.x + (x - from.x) * 0.7 + randInt(-spread, spread), y: from.y + (y - from.y) * 0.7 + randInt(-spread, spread) };
@@ -24,6 +49,7 @@ export async function moveMouse(page: Page, x: number, y: number) {
     await sleep(randInt(4, 14));
   }
   mousePos.set(page, { x, y });
+  notify(page, (o) => o.move?.({ x, y }, from, Date.now() - t0));
 }
 
 async function pointIn(locator: Locator, timeout: number) {
@@ -88,6 +114,7 @@ export async function click(page: Page, locator: Locator, opts: { humanize: bool
       await page.mouse.up({ button: opts.button, clickCount: i + 1 });
       if (i < n - 1) await sleep(randInt(60, 120));
     }
+    notify(page, (o) => o.click?.(pt, opts.button ?? 'left', n));
     return;
   }
   // the page keeps changing under the mouse: let Playwright check and click in one quick go,
@@ -189,6 +216,7 @@ export async function typeText(page: Page, text: string, delay: number | [number
   if (!humanize && delay === undefined) {
     await guard?.check();
     await page.keyboard.insertText(text);
+    notify(page, (o) => o.type?.(text.length));
     return;
   }
   const [lo, hi] = Array.isArray(delay) ? delay : delay !== undefined ? [delay, delay] : [45, 140];
@@ -199,6 +227,7 @@ export async function typeText(page: Page, text: string, delay: number | [number
     if (humanize && Math.random() < 0.06) d += randInt(150, 450); // occasional thinking pause
     await sleep(d);
   }
+  notify(page, (o) => o.type?.([...text].length));
 }
 
 export async function selectAllAndDelete(page: Page, guard?: FocusGuard) {
@@ -219,6 +248,7 @@ export async function wheel(page: Page, dy: number, humanize: boolean) {
       mousePos.set(page, { x, y });
     }
   }
+  notify(page, (o) => o.wheel?.(dy, mousePos.get(page) ?? null));
   if (!humanize) {
     await page.mouse.wheel(0, dy);
     return;
