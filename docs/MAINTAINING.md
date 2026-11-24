@@ -5,7 +5,7 @@
 ## 分支与提交
 
 - `main` 永远可用：CI 全绿才合并。
-- 一次改动拆成多个小提交，每个提交一句话说清楚（`fix:` / `feat:` / `docs:` / `ci:` / `chore:` / `recipe(<站点>):`）。
+- 一次改动拆成多个小提交，每个提交一句话说清楚（`fix:` / `feat:` / `docs:` / `ci:` / `chore:`）。
 - 改动走 PR，即使是维护者自己的改动，方便留下记录和跑 CI。
 
 ## 发版流程
@@ -29,27 +29,27 @@
 |---|---|
 | `triage` | 新 Issue，还没看（模板自动加） |
 | `bug` | 工具本身的问题 |
-| `recipe` | 配方在某网站失效或新配方需求 |
+| `selfcheck` | `selfcheck` 在某台机器上没通过 |
 | `enhancement` | 功能建议 |
-| `good first issue` | 适合新人：文档、小配方、小修复 |
+| `good first issue` | 适合新人：文档、自检页小改进、小修复 |
 | `help wanted` | 欢迎社区来做 |
 | `needs-info` | 等报告人补充信息，14 天没回复就关闭 |
 | `wontfix` / `out-of-scope` | 不做，例如违反[负责任使用说明](responsible-use.md)的需求 |
 
 建议节奏：每周看一次新 Issue，48 小时内给第一条回复（哪怕只是"收到，会看"）。回复快是让新项目显得可靠的最有效方式。
 
-配方失效的 Issue：先让报告人贴 `heal` 输出，按现场档案写补丁（`patch`），用 `run --resume` 验证，再把配方版本号 +1 提交。
+自检没通过的 Issue：先让报告人贴 `selfcheck` 的完整输出和 `heal <运行目录>`，按失败的检查项定位到执行器的问题。仓库不收真实网站的配方，这类 PR 礼貌关闭并说明原因。
 
 ## PR 审查清单
 
 - CI 绿：构建、单元、端到端、配方校验。
 - 行为变化有测试，有 CHANGELOG 条目。
-- 配方 PR：只读、`site` 写明、有数量和等待上限、PR 里写了真实运行记录、没有隐私数据。
+- 不包含针对真实网站的配方、没有隐私数据。
 - 不接受：绕过验证码、自动填密码、刷量、"无法检测"之类的功能或宣传。
 
 ## 依赖更新
 
-Dependabot 每周提 npm 更新、每月提 GitHub Actions 更新。patchright 升级要特别留意：合并前在本机跑一遍 `npm test` 和 `browser-recipewright doctor`，再真实跑一次 X 配方。
+Dependabot 每周提 npm 更新、每月提 GitHub Actions 更新。patchright 升级要特别留意：合并前在本机跑一遍 `npm test` 和 `browser-recipewright doctor`，再跑一次 `browser-recipewright selfcheck`（带窗口）。
 
 ## 安全报告
 
