@@ -16,6 +16,7 @@ import { listRuns, readSteps } from './records.js';
 import { patchTemplateFile } from './heal.js';
 import { runBatch, usageToday } from './batch.js';
 import { buildJsonSchema } from './schema.js';
+import { checkRunDir, EVENTS_FILE, buildRunEventsJsonSchema } from './events.js';
 import { startDemoServer } from './demo.js';
 import { readJson, writeJson, homeDir, dirs, log, sleep, RpaError, PKG_ROOT } from './util.js';
 
@@ -368,8 +369,9 @@ program
 
 program
   .command('schema')
-  .description('print the template JSON Schema')
-  .action(wrap(async () => out(buildJsonSchema())));
+  .description('print the template JSON Schema (--run-events: the schema of one events.jsonl line instead)')
+  .option('--run-events', 'print the run event schema (run data format v1)')
+  .action(wrap(async (o) => out(o.runEvents ? buildRunEventsJsonSchema() : buildJsonSchema())));
 
 // ---------------- records & repair ----------------
 program
@@ -390,6 +392,73 @@ program
     const run = readJson(path.join(dir, 'run.json'));
     const steps = readSteps(dir).map((s) => ({ seq: s.seq, path: s.path, action: s.action, status: s.status, ms: s.durationMs, hit: s.locator?.hit ?? null, error: s.error?.code ?? null, note: s.note ?? (s as any).collect ?? undefined }));
     out({ run, steps });
+  }));
+
+/** The run directory given, or the newest run (runs/_latest.json). */
+function runDirOrLatest(dir?: string): string {
+  if (dir) return dir;
+  const f = path.join(dirs.runs(), '_latest.json');
+  if (!fs.existsSync(f)) throw new RpaError('INPUT_INVALID', 'no run yet (runs/_latest.json not found); pass a run directory');
+  return readJson(f).runDir;
+}
+
+program
+  .command('events [runDir]')
+  .description('print the run event stream (events.jsonl, one JSON per line) of a run, or the newest run; --follow keeps printing while it runs (for viewer plugins)')
+  .option('-f, --follow', 'keep printing new events until the run ends')
+  .option('--poll <ms>', 'how often to look for new events when following', '250')
+  .action(wrap(async (dir, o) => {
+    const runDir = runDirOrLatest(dir);
+    const file = path.join(runDir, EVENTS_FILE);
+    if (!fs.existsSync(path.join(runDir, 'run.json'))) throw new RpaError('INPUT_INVALID', `${runDir} is not a run directory (no run.json)`);
+    if (!fs.existsSync(file)) throw new RpaError('INPUT_INVALID', `${runDir} has no ${EVENTS_FILE} (a run from before the v1 run data format)`);
+    let pos = 0;
+    let rest = '';
+    let ended = false;
+    const pump = () => {
+      const size = fs.statSync(file).size;
+      if (size <= pos) return;
+      const fd = fs.openSync(file, 'r');
+      const buf = Buffer.alloc(size - pos);
+      fs.readSync(fd, buf, 0, buf.length, pos);
+      fs.closeSync(fd);
+      pos = size;
+      const lines = (rest + buf.toString('utf8')).split('\n');
+      rest = lines.pop() ?? '';
+      for (const l of lines) {
+        if (!l) continue;
+        process.stdout.write(l + '\n');
+        if (l.includes('"type":"run.end"')) ended = true;
+      }
+    };
+    pump();
+    if (!o.follow) return;
+    let idleSince = Date.now();
+    while (!ended) {
+      await sleep(Number(o.poll) || 250);
+      const before = pos;
+      pump();
+      if (pos !== before) idleSince = Date.now();
+      else if (Date.now() - idleSince > 3000) {
+        // the writer died without run.end: stop once run.json says it is no longer running
+        const st = (() => { try { return readJson(path.join(runDir, 'run.json')).status; } catch { return 'running'; } })();
+        if (st !== 'running') break;
+        idleSince = Date.now();
+      }
+    }
+  }));
+
+program
+  .command('check-run [runDir]')
+  .description('check that a run directory follows the run data format (docs/run-data-format.md); defaults to the newest run')
+  .action(wrap(async (dir) => {
+    const runDir = runDirOrLatest(dir);
+    const r = checkRunDir(runDir);
+    for (const w of r.warnings) log.info(`! ${w}`);
+    for (const e of r.errors) log.info(`✗ ${e}`);
+    if (r.ok) log.info(`✓ ${runDir}: ${r.format ?? 'legacy run'}, ${r.events} event(s)${r.finished ? '' : ' (not finished)'}`);
+    out({ status: r.ok ? 'ok' : 'failed', runDir, ...r });
+    if (!r.ok) process.exitCode = 1;
   }));
 
 program

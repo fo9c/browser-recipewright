@@ -63,7 +63,7 @@ For your own sites, let your agent explore with `snapshot` / `act` and save what
 
 Claude Code: `ln -s "$(pwd)/skills/browser-recipewright" ~/.claude/skills/browser-recipewright`, then ask in plain language.
 
-Docs: [template format](skills/browser-recipewright/references/template-format.md) · [batch](skills/browser-recipewright/references/batch.md) · [skill](skills/browser-recipewright/SKILL.md) · [architecture](docs/architecture.md)
+Docs: [template format](skills/browser-recipewright/references/template-format.md) · [batch](skills/browser-recipewright/references/batch.md) · [skill](skills/browser-recipewright/SKILL.md) · [architecture](docs/architecture.md) · [run data format for viewer plugins](docs/run-data-format.md)
 
 ## Roadmap
 

@@ -1,0 +1,689 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/fo9c/browser-recipewright/main/schema/run-events.v1.json",
+  "title": "browser-recipewright run event (recipewright.run v1), one line of events.jsonl",
+  "description": "Every line matches the envelope. Lines whose \"type\" is listed also match that type. Unknown types and extra fields are allowed: ignore them.",
+  "allOf": [
+    {
+      "$ref": "#/$defs/envelope"
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "run.start"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/run.start"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "run.end"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/run.end"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "step.start"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/step.start"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "step.retry"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/step.retry"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "step.end"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/step.end"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "loop.iteration"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/loop.iteration"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "data"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/data"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "page.navigated"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/page.navigated"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "page.viewport"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/page.viewport"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "pointer.move"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/pointer.move"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "pointer.click"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/pointer.click"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "pointer.wheel"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/pointer.wheel"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "key.type"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/key.type"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "handoff.start"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/handoff.start"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "handoff.end"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/handoff.end"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "artifact"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/artifact"
+      }
+    }
+  ],
+  "$defs": {
+    "envelope": {
+      "type": "object",
+      "properties": {
+        "v": {
+          "type": "number",
+          "const": 1
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "t": {
+          "type": "string"
+        },
+        "ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-zA-Z]*(\\.[a-z][a-zA-Z]*)*$"
+        }
+      },
+      "required": [
+        "v",
+        "seq",
+        "t",
+        "ms",
+        "type"
+      ],
+      "additionalProperties": {}
+    },
+    "run.start": {
+      "type": "object",
+      "properties": {
+        "runId": {
+          "type": "string"
+        },
+        "templateId": {
+          "type": "string"
+        },
+        "templateVersion": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {}
+        },
+        "type": {
+          "const": "run.start"
+        }
+      },
+      "required": [
+        "runId",
+        "templateId",
+        "templateVersion",
+        "steps"
+      ],
+      "additionalProperties": {}
+    },
+    "run.end": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "success",
+            "failed"
+          ]
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "code",
+                "message"
+              ],
+              "additionalProperties": {}
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "const": "run.end"
+        }
+      },
+      "required": [
+        "status",
+        "durationMs"
+      ],
+      "additionalProperties": {}
+    },
+    "step.start": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "path": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "type": {
+          "const": "step.start"
+        }
+      },
+      "required": [
+        "step",
+        "path",
+        "stepId",
+        "action"
+      ],
+      "additionalProperties": {}
+    },
+    "step.retry": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "path": {
+          "type": "string"
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": {}
+        },
+        "type": {
+          "const": "step.retry"
+        }
+      },
+      "required": [
+        "step",
+        "path",
+        "attempt",
+        "error"
+      ],
+      "additionalProperties": {}
+    },
+    "step.end": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "path": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ok",
+            "failed",
+            "soft-failed",
+            "skipped"
+          ]
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "type": {
+          "const": "step.end"
+        }
+      },
+      "required": [
+        "step",
+        "path",
+        "stepId",
+        "action",
+        "status",
+        "durationMs"
+      ],
+      "additionalProperties": {}
+    },
+    "loop.iteration": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "type": {
+          "const": "loop.iteration"
+        }
+      },
+      "required": [
+        "path",
+        "index"
+      ],
+      "additionalProperties": {}
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "save",
+            "append",
+            "collect"
+          ]
+        },
+        "added": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "type": {
+          "const": "data"
+        }
+      },
+      "required": [
+        "path",
+        "mode",
+        "added"
+      ],
+      "additionalProperties": {}
+    },
+    "page.navigated": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "type": {
+          "const": "page.navigated"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "additionalProperties": {}
+    },
+    "page.viewport": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "number"
+        },
+        "height": {
+          "type": "number"
+        },
+        "type": {
+          "const": "page.viewport"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ],
+      "additionalProperties": {}
+    },
+    "pointer.move": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "type": {
+          "const": "pointer.move"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": {}
+    },
+    "pointer.click": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "type": {
+          "const": "pointer.click"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": {}
+    },
+    "pointer.wheel": {
+      "type": "object",
+      "properties": {
+        "dy": {
+          "type": "number"
+        },
+        "type": {
+          "const": "pointer.wheel"
+        }
+      },
+      "required": [
+        "dy"
+      ],
+      "additionalProperties": {}
+    },
+    "key.type": {
+      "type": "object",
+      "properties": {
+        "chars": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "type": {
+          "const": "key.type"
+        }
+      },
+      "required": [
+        "chars"
+      ],
+      "additionalProperties": {}
+    },
+    "handoff.start": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "type": {
+          "const": "handoff.start"
+        }
+      },
+      "required": [
+        "reason",
+        "code"
+      ],
+      "additionalProperties": {}
+    },
+    "handoff.end": {
+      "type": "object",
+      "properties": {
+        "waitedMs": {
+          "type": "number"
+        },
+        "resolved": {
+          "type": "boolean"
+        },
+        "type": {
+          "const": "handoff.end"
+        }
+      },
+      "required": [
+        "waitedMs",
+        "resolved"
+      ],
+      "additionalProperties": {}
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "type": {
+          "const": "artifact"
+        }
+      },
+      "required": [
+        "path",
+        "kind"
+      ],
+      "additionalProperties": {}
+    }
+  }
+}

@@ -158,3 +158,61 @@ test('Chrome flags keep minimized / covered / background windows at full speed',
   assert.ok(!args.includes('--headless=new'));
   assert.ok(chromeArgs('/tmp/x', { headless: true }).includes('--headless=new'));
 });
+
+test('run data format: recorder writes run.json + events.jsonl that pass check-run', async () => {
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { RunRecorder } = await import('../dist/records.js');
+  const { checkRunDir, readEvents, stepOutline } = await import('../dist/events.js');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'brw-fmt-'));
+  try {
+    const rec = new RunRecorder('demo/unit', base);
+    const steps = [{ id: 'open', action: 'goto', url: 'x' }, { id: 'each', action: 'forEach', in: '{{ vars.a }}', as: 'it', do: [{ id: 'read', action: 'read', target: [{ css: 'a' }] }] }];
+    rec.start({ templateId: 'demo/unit', templateVersion: '0.1.0' }, steps);
+    const seq = rec.nextSeq();
+    rec.events.emit('step.start', { step: seq, path: 'open', stepId: 'open', action: 'goto' });
+    rec.events.emit('data', { step: seq, path: 'open', mode: 'save', added: 1, preview: { a: 1 } });
+    rec.step({ seq, stepId: 'open', path: 'open', action: 'goto', status: 'ok', startedAt: new Date().toISOString(), durationMs: 5, urlBefore: null, urlAfter: 'about:blank', locator: null, expect: null, attempts: 1, output: null, artifacts: [] });
+    let mid = checkRunDir(rec.dir);
+    assert.equal(mid.ok, true, mid.errors.join('\n'));
+    assert.equal(mid.finished, false);
+    rec.writeOutput([]);
+    rec.finish({ status: 'success', error: null, outputCount: 0 });
+    const r = checkRunDir(rec.dir);
+    assert.equal(r.ok, true, r.errors.join('\n'));
+    assert.equal(r.finished, true);
+    assert.equal(r.format, 'recipewright.run/1');
+    const ev = readEvents(rec.dir);
+    assert.deepEqual(ev.map((e) => e.type), ['run.start', 'step.start', 'data', 'step.end', 'run.end']);
+    assert.deepEqual(ev.map((e) => e.seq), [1, 2, 3, 4, 5]);
+    assert.equal(ev[0].steps[1].children.do[0].path, 'each[*].read');
+    assert.equal(stepOutline(steps)[1].loop, true);
+    const latest = JSON.parse(fs.readFileSync(path.join(base, '_latest.json'), 'utf8'));
+    assert.equal(latest.runDir, rec.dir);
+    assert.equal(latest.status, 'success');
+    // an unfinished last line is ignored by readers; a broken envelope is reported
+    fs.appendFileSync(path.join(rec.dir, 'events.jsonl'), '{"v":1,"seq":6');
+    assert.equal(readEvents(rec.dir).length, 5);
+    fs.appendFileSync(path.join(rec.dir, 'events.jsonl'), '\n');
+    assert.equal(checkRunDir(rec.dir).ok, false);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test('run data format: unknown event types and extra fields are allowed (forward compatible)', async () => {
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { RunRecorder } = await import('../dist/records.js');
+  const { checkRunDir } = await import('../dist/events.js');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'brw-fmt-'));
+  try {
+    const rec = new RunRecorder('demo/unit', base);
+    rec.start({ templateId: 'demo/unit', templateVersion: '0.1.0' }, []);
+    rec.events.emit('future.thing', { anything: [1, 2] });
+    rec.finish({ status: 'failed', error: { code: 'X', message: 'y' } });
+    assert.equal(checkRunDir(rec.dir).ok, true);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});
