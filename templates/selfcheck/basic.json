@@ -1,0 +1,167 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fo9c/browser-recipewright/main/schema/template.v0.json",
+  "id": "selfcheck/basic",
+  "version": "0.1.0",
+  "title": "Self-check: exercise every core browser action on the bundled local page",
+  "description": "Runs against demo-site/selfcheck.html (served locally by `browser-recipewright selfcheck`). Types, selects, ticks, clicks, presses Enter, waits for a late element, hovers, scrolls a lazy list, extracts rows, navigates and goes back, then checks that all input was trusted and human-like. No network, no account.",
+  "tags": ["selfcheck", "offline"],
+  "site": ["127.0.0.1", "localhost"],
+  "inputs": {
+    "base": { "type": "string", "default": "http://127.0.0.1:4173", "description": "local self-check server URL" },
+    "name": { "type": "string", "default": "Recipewright 自检", "description": "text typed into the form" }
+  },
+  "defaults": {
+    "timeoutMs": 10000,
+    "stepGapMs": [100, 300],
+    "humanize": true,
+    "screenshots": "failure"
+  },
+  "steps": [
+    {
+      "id": "open",
+      "action": "goto",
+      "note": "打开本地自检页",
+      "url": "{{inputs.base}}/selfcheck.html",
+      "expect": { "exists": [{ "testid": "sc-title" }, { "role": "heading", "name": "browser-recipewright 自检页" }] }
+    },
+    {
+      "id": "type-name",
+      "action": "type",
+      "note": "逐字输入（像人一样有快有慢）",
+      "target": [{ "testid": "sc-name" }, { "label": "名字" }],
+      "text": "{{inputs.name}}",
+      "clear": true
+    },
+    {
+      "id": "pick-color",
+      "action": "select",
+      "target": [{ "testid": "sc-color" }, { "label": "颜色" }],
+      "option": "green"
+    },
+    {
+      "id": "tick-agree",
+      "action": "check",
+      "target": [{ "testid": "sc-agree" }, { "label": "我已阅读" }]
+    },
+    {
+      "id": "submit",
+      "action": "click",
+      "note": "鼠标沿曲线移过去再点击",
+      "target": [{ "testid": "sc-submit" }, { "role": "button", "name": "提交" }],
+      "expect": { "textContains": [[{ "testid": "sc-form-result" }], "提交成功"] }
+    },
+    {
+      "id": "type-search",
+      "action": "type",
+      "target": [{ "testid": "sc-search" }, { "placeholder": "输入后按回车" }],
+      "text": "self check",
+      "clear": true
+    },
+    {
+      "id": "press-enter",
+      "action": "press",
+      "key": "Enter",
+      "target": [{ "testid": "sc-search" }, { "placeholder": "输入后按回车" }],
+      "expect": { "textContains": [[{ "testid": "sc-search-result" }], "已搜索：self check"] }
+    },
+    {
+      "id": "wait-late",
+      "action": "waitFor",
+      "note": "等 1.5 秒后才出现的内容",
+      "target": [{ "testid": "sc-late" }, { "text": "延迟内容已出现" }],
+      "state": "visible"
+    },
+    {
+      "id": "hover-tip",
+      "action": "hover",
+      "target": [{ "testid": "sc-hover" }, { "role": "button", "name": "悬停这里" }],
+      "expect": { "visible": [{ "testid": "sc-tooltip" }, { "text": "提示出现了" }] }
+    },
+    {
+      "id": "collect-rows",
+      "action": "collect",
+      "note": "边滚动边提取，列表会分批加载，共 40 条",
+      "item": [{ "testid": "sc-row" }, { "css": "#list .row" }],
+      "fields": {
+        "title": { "target": [{ "testid": "sc-row-title" }, { "css": "b" }], "text": true },
+        "score": { "target": [{ "testid": "sc-row-score" }, { "css": "span" }], "text": true, "as": "number" }
+      },
+      "dedupeBy": "title",
+      "limit": 40,
+      "maxScrolls": 20,
+      "saveAs": "rows"
+    },
+    {
+      "id": "enough-rows",
+      "action": "assert",
+      "note": "滚动加载必须拿到全部 40 条",
+      "that": { "countEq": ["{{vars.rows}}", 40] },
+      "code": "SELFCHECK_SCROLL",
+      "message": "滚动加载没有拿到全部 40 条"
+    },
+    {
+      "id": "read-report",
+      "action": "read",
+      "note": "读取页面记录的输入特征",
+      "target": [{ "testid": "sc-report" }, { "css": "table" }],
+      "fields": {
+        "trusted": { "target": [{ "testid": "r-trusted" }], "text": true },
+        "mouseMovesBeforeClick": { "target": [{ "testid": "r-moves" }], "text": true, "as": "number" },
+        "keys": { "target": [{ "testid": "r-keys" }], "text": true, "as": "number" },
+        "variedKeyGaps": { "target": [{ "testid": "r-varied" }], "text": true },
+        "rowsLoaded": { "target": [{ "testid": "r-rows" }], "text": true, "as": "number" },
+        "webdriver": { "target": [{ "testid": "r-webdriver" }], "text": true }
+      },
+      "saveAs": "report"
+    },
+    {
+      "id": "check-trusted",
+      "action": "assert",
+      "that": { "eq": ["{{vars.report.trusted}}", "yes"] },
+      "code": "SELFCHECK_UNTRUSTED_INPUT",
+      "message": "页面看到了非可信（脚本合成的）输入事件"
+    },
+    {
+      "id": "check-mouse",
+      "action": "assert",
+      "that": { "gte": ["{{vars.report.mouseMovesBeforeClick}}", 3] },
+      "code": "SELFCHECK_NO_MOUSE_PATH",
+      "message": "点击前几乎没有鼠标移动，像是瞬移点击"
+    },
+    {
+      "id": "check-keys",
+      "action": "assert",
+      "that": { "and": [{ "gte": ["{{vars.report.keys}}", 10] }, { "eq": ["{{vars.report.variedKeyGaps}}", "yes"] }] },
+      "code": "SELFCHECK_ROBOTIC_TYPING",
+      "message": "按键间隔完全一样，像机器输入"
+    },
+    {
+      "id": "check-webdriver",
+      "action": "assert",
+      "that": { "ne": ["{{vars.report.webdriver}}", "true"] },
+      "code": "SELFCHECK_WEBDRIVER",
+      "message": "navigator.webdriver 为 true"
+    },
+    {
+      "id": "go-next",
+      "action": "click",
+      "target": [{ "testid": "sc-next" }, { "role": "link", "name": "去第二页" }],
+      "expect": { "and": [{ "urlContains": "selfcheck-next" }, { "exists": [{ "testid": "sc-page2" }] }] }
+    },
+    {
+      "id": "go-back",
+      "action": "back",
+      "expect": { "exists": [{ "testid": "sc-title" }] }
+    }
+  ],
+  "outputs": {
+    "from": "{{vars.report}}",
+    "schema": {
+      "type": "object",
+      "required": ["trusted", "mouseMovesBeforeClick", "keys", "variedKeyGaps", "rowsLoaded", "webdriver"]
+    }
+  },
+  "provenance": {
+    "source": "built-in self-check recipe"
+  }
+}
