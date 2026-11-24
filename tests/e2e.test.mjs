@@ -222,3 +222,14 @@ test('typing keeps its focus when something else grabs it', { skip }, async () =
   assert.match(res, /box=hello world\|other=(?!\w)/, res);
   assert.match(act.stderr, /lost focus while typing/);
 });
+
+test('selfcheck: built-in recipe exercises every core action on the local page', { skip }, async () => {
+  const r = await cli('selfcheck', '--headless');
+  assert.equal(r.json.status, 'pass', r.stdout + r.stderr);
+  assert.ok(r.json.checks.length >= 15);
+  for (const c of r.json.checks) assert.equal(c.status, 'pass', JSON.stringify(c));
+  assert.equal(r.json.observed.trusted, 'yes');
+  assert.equal(r.json.observed.rowsLoaded, 40);
+  assert.equal(r.json.observed.webdriver, 'false');
+  assert.match(r.stderr, /自检通过/);
+});

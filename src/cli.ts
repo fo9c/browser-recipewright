@@ -439,6 +439,55 @@ program
     out({ status: 'ok', home: homeDir(), accounts: rows });
   }));
 
+// ---------------- selfcheck ----------------
+/** Plain-language names for the self-check steps, shown in the summary. */
+const SELFCHECK_LABELS: Record<string, string> = {
+  open: '打开本地页面 / open page',
+  'type-name': '逐字输入 / type text',
+  'pick-color': '下拉选择 / select option',
+  'tick-agree': '勾选 / check box',
+  submit: '移动鼠标并点击 / move + click',
+  'type-search': '输入搜索词 / type query',
+  'press-enter': '按回车 / press Enter',
+  'wait-late': '等待延迟出现的内容 / wait for element',
+  'hover-tip': '悬停 / hover',
+  'collect-rows': '滚动并批量提取 / scroll + extract',
+  'enough-rows': '提取到全部 40 条 / got all rows',
+  'read-report': '读取页面观察结果 / read report',
+  'check-trusted': '输入都是可信事件 / trusted input',
+  'check-mouse': '点击前有鼠标轨迹 / mouse path',
+  'check-keys': '按键节奏有快有慢 / varied typing',
+  'check-webdriver': 'navigator.webdriver 不暴露 / webdriver hidden',
+  'go-next': '点击链接跳转 / follow link',
+  'go-back': '浏览器返回 / go back',
+};
+
+program
+  .command('selfcheck')
+  .description('check that this install can drive the browser: run the built-in selfcheck/basic recipe on a bundled local page (no network, no account)')
+  .option('--headless', 'no window')
+  .option('--keep-open', 'leave Chrome open')
+  .action(wrap(async (o) => {
+    const srv = await startDemoServer(4173);
+    log.info(`self-check page: ${srv.url}/selfcheck.html`);
+    try {
+      const loaded = loadTemplate('selfcheck/basic');
+      const res = await new Runner({ loaded, inputs: { base: srv.url }, profile: 'selfcheck/default', headless: o.headless, keepOpen: o.keepOpen, handoff: 'never' }).run();
+      const steps = readSteps(res.runDir);
+      const checks = Object.entries(SELFCHECK_LABELS).map(([id, label]) => {
+        const s = steps.filter((x: any) => x.stepId === id).pop();
+        return { id, label, status: s ? (s.status === 'ok' ? 'pass' : 'fail') : 'not run', ...(s?.error ? { error: s.error.code } : {}) };
+      });
+      log.info('');
+      for (const c of checks) log.info(`  ${c.status === 'pass' ? '✅' : c.status === 'fail' ? '❌' : '⏭️ '} ${c.label}${c.error ? `  (${c.error})` : ''}`);
+      log.info(res.status === 'success' ? '\n自检通过：浏览器操作功能正常。Self-check passed.' : `\n自检未通过，详情见 ${res.runDir}。Self-check failed.`);
+      out({ status: res.status === 'success' ? 'pass' : 'fail', checks, observed: res.output ?? null, runDir: res.runDir, error: res.error ?? null });
+      process.exitCode = exitCodeFor(res.error?.code);
+    } finally {
+      await srv.close();
+    }
+  }));
+
 // ---------------- demo ----------------
 program
   .command('demo')
