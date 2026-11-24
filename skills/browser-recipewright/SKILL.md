@@ -12,28 +12,28 @@ Templates are deterministic, cheap to replay, and a human can review them.
 All commands print a JSON result on stdout and progress on stderr. Exit codes:
 `0` ok · `1` template/step problem (you may fix it) · `2` invalid input/template · `3` environment problem (login, captcha, browser — hand to the human, do not edit the template).
 
-If `browser-recipewright` is not on PATH, use `npx browser-recipewright` (or `node <repo>/bin/browser-recipewright.js`). Run `browser-recipewright doctor` once if anything looks broken.
+If `browser-recipewright` is not on PATH, use `npx browser-recipewright` (or `node <repo>/bin/browser-recipewright.js`). Run `browser-recipewright doctor` once if anything looks broken, and `browser-recipewright selfcheck` to confirm clicks, typing, scrolling and extraction work on this machine (local test page, no network).
 
 ## 0. Is there already a template?
 
 ```bash
 browser-recipewright list                         # library: id, version, title, inputs
-browser-recipewright show x.com/search-read-posts # read it before running
+browser-recipewright show demo/local-feed       # read it before running
 ```
 If one fits, skip to step 4.
 
 ## 1. Explore the page (only when writing or repairing)
 
 ```bash
-browser-recipewright launch -p x.com/main --url "https://x.com/home"   # opens/reuses that account's Chrome
-browser-recipewright snapshot -p x.com/main                              # outline with [ref=rN]
-browser-recipewright snapshot -p x.com/main --json                       # same + locator candidates per ref
-browser-recipewright screenshot -p x.com/main -o page.png [--full]       # look at the page yourself (PNG); act --screenshot does it after a step
-browser-recipewright act click --ref r12 -p x.com/main                   # try ONE step, same semantics as a template step
-browser-recipewright act fill --ref r5 --value "hello" -p x.com/main
-browser-recipewright act read --ref r20 --fields '{"text":{"text":true}}' -p x.com/main
-browser-recipewright act goto --url "https://x.com/search?q=ai" -p x.com/main
-browser-recipewright act collect --step '{"item":[{"testid":"tweet"}],"fields":{...},"limit":5,"maxScrolls":3}' -p x.com/main
+browser-recipewright launch -p example.com/main --url "https://example.com/" # opens/reuses that account's Chrome
+browser-recipewright snapshot -p example.com/main                              # outline with [ref=rN]
+browser-recipewright snapshot -p example.com/main --json                       # same + locator candidates per ref
+browser-recipewright screenshot -p example.com/main -o page.png [--full]       # look at the page yourself (PNG); act --screenshot does it after a step
+browser-recipewright act click --ref r12 -p example.com/main                   # try ONE step, same semantics as a template step
+browser-recipewright act fill --ref r5 --value "hello" -p example.com/main
+browser-recipewright act read --ref r20 --fields '{"text":{"text":true}}' -p example.com/main
+browser-recipewright act goto --url "https://example.com/search?q=ai" -p example.com/main
+browser-recipewright act collect --step '{"item":[{"testid":"post"}],"fields":{...},"limit":5,"maxScrolls":3}' -p example.com/main
 #   collect prints {count, items:[...], fieldsEmpty:{field: n}, stats:{scanned, filteredOut, scrolls, stoppedBecause}}
 #   fieldsEmpty tells you which field locator is wrong before you put the step in a template
 ```
@@ -84,7 +84,7 @@ Fix every error (each has a step id and field path). Warnings are advice. Do not
 ## 4. Run
 
 ```bash
-browser-recipewright run x.com/search-read-posts -i keyword="AI agent" -i count=5 -p x.com/main
+browser-recipewright run example.com/search -i keyword="AI agent" -i count=5 -p example.com/main
 browser-recipewright run ./my-template.json --inputs '{"keyword":"rpa"}' --keep-open
 ```
 - A window opens (the human can watch). If login or a captcha is needed, the run pauses and asks the human in the terminal, then continues by itself. In unattended runs pass `--no-handoff` and treat exit code 3 as "tell the human".
@@ -102,7 +102,7 @@ Decide by `error.category`:
 - `template`: read `failure/snapshot.txt` and `failure/snapshot.refs.json` (ready-made candidates), compare with `lastSuccess`, then write a patch that touches only the failed step id:
 
 ```json
-{ "stepId": "collect-posts", "ops": [ { "op": "replace", "path": "/item", "value": [ { "testid": "tweet" }, { "role": "article" } ] } ], "note": "site renamed the item test id" }
+{ "stepId": "collect-posts", "ops": [ { "op": "replace", "path": "/item", "value": [ { "testid": "post" }, { "role": "article" } ] } ], "note": "site renamed the item test id" }
 ```
 Other forms: `{"stepId":"x","op":"merge","value":{...}}`, `"op":"replace"` (whole step), `"insertBefore"`, `"insertAfter"`, `"remove"`.
 

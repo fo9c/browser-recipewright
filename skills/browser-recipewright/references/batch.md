@@ -6,11 +6,11 @@ profile and writes its own run record.
 ```json
 {
   "name": "x-daily-read",
-  "template": "x.com/search-read-posts",
+  "template": "example.com/search-results",
   "inputs": { "count": 5, "minLikes": 100 },
   "accounts": [
-    { "id": "brand-a", "profile": "x.com/brand-a", "inputs": { "keyword": "coffee" } },
-    { "id": "brand-b", "profile": "x.com/brand-b", "inputs": { "keyword": "tea" } }
+    { "id": "brand-a", "profile": "example.com/brand-a", "inputs": { "keyword": "coffee" } },
+    { "id": "brand-b", "profile": "example.com/brand-b", "inputs": { "keyword": "tea" } }
   ],
   "jobs": [
     { "account": "brand-a", "inputs": { "keyword": "latte" } }
@@ -42,7 +42,7 @@ browser-recipewright batch --resume ~/.browser-recipewright/batches/<dir> --retr
 Batch folder: `batch.json` (with the frozen job plan), `results.jsonl` (one line per finished job),
 `summary.json` + `summary.csv` (status per job, run folder, error code).
 
-Log each account in once beforehand: `browser-recipewright login x.com/search-read-posts -p x.com/brand-a`.
+Log each account in once beforehand: `browser-recipewright login example.com/search-results -p example.com/brand-a`.
 
 Platforms forbid coordinated inauthentic behaviour. Use batches for accounts you legitimately operate
 (e.g. several of your own stores or brands), keep spacing and caps conservative, and prefer read-only tasks.

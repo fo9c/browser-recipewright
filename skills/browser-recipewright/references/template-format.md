@@ -8,7 +8,7 @@ Machine-readable schema: `schema/template.v0.json` (or `browser-recipewright sch
 | field | required | meaning |
 |---|---|---|
 | `$schema` | no | URL of the JSON Schema (editors validate with it) |
-| `id` | yes | `site/task`, e.g. `x.com/search-read-posts` |
+| `id` | yes | `site/task`, e.g. `example.com/search-results` |
 | `version` | yes | semver; `patch` bumps the last number |
 | `title` / `description` | title yes | one line for humans and library search |
 | `tags` | no | strings |
@@ -30,7 +30,7 @@ A list of candidates tried in order; the first that matches **exactly one visibl
 
 | candidate | example | stability |
 |---|---|---|
-| `testid` | `{ "testid": "tweet" }` (`data-testid`) | highest |
+| `testid` | `{ "testid": "post" }` (`data-testid`) | highest |
 | `role` (+`name`) | `{ "role": "button", "name": "Post", "exact": true }` | high |
 | `label` / `placeholder` | `{ "placeholder": "Search" }` | medium |
 | `text` | `{ "text": "Latest", "exact": true }` | medium |
