@@ -1,0 +1,329 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fo9c/browser-recipewright/main/schema/template.v0.json",
+  "id": "zhipin.com/search-read-jobs",
+  "version": "0.1.2",
+  "title": "Boss直聘：固定城市 + 行业，按多个关键词搜岗位并逐个读取 JD（只读）",
+  "description": "For each keyword, opens the Boss直聘 job search by URL with a fixed city and industry, collects job cards into one de-duplicated list, then opens up to 30 job detail pages one by one at a slow, human-like pace and reads the full job description. Read-only: never clicks 立即沟通, 收藏 or any contact button.",
+  "tags": [
+    "zhipin.com",
+    "boss",
+    "jobs",
+    "read-only"
+  ],
+  "site": [
+    "zhipin.com"
+  ],
+  "account": {
+    "platform": "zhipin.com",
+    "checkUrl": "https://www.zhipin.com/web/geek/jobs",
+    "loginUrl": "https://www.zhipin.com/web/user/?ka=header-login",
+    "loginCheck": {
+      "or": [
+        {
+          "exists": [
+            {
+              "css": "a[href*='/web/geek/resume']"
+            }
+          ]
+        },
+        {
+          "exists": [
+            {
+              "css": "a[href*='/web/geek/chat']"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "inputs": {
+    "keywords": {
+      "type": "array",
+      "default": [
+        "AI Agent",
+        "智能体",
+        "大模型",
+        "AI应用",
+        "LLM",
+        "AIGC",
+        "AI工程师",
+        "Python"
+      ],
+      "description": "依次搜索的关键词（结果会合并去重）"
+    },
+    "city": {
+      "type": "string",
+      "default": "101210900",
+      "description": "城市代码，101210900 = 金华"
+    },
+    "industry": {
+      "type": "string",
+      "default": "100020",
+      "description": "行业代码，100020 = 互联网"
+    },
+    "perKeyword": {
+      "type": "integer",
+      "default": 15,
+      "description": "每个关键词最多收几条"
+    },
+    "cityName": {
+      "type": "string",
+      "default": "金华",
+      "description": "只保留地点包含这个词的岗位"
+    }
+  },
+  "defaults": {
+    "timeoutMs": 20000,
+    "stepGapMs": [
+      800,
+      2000
+    ],
+    "humanize": true,
+    "screenshots": "failure"
+  },
+  "steps": [
+    {
+      "id": "search-each-keyword",
+      "action": "forEach",
+      "note": "每个关键词打开一次搜索结果页，把岗位卡片并进同一个去重列表",
+      "in": "{{inputs.keywords}}",
+      "as": "kw",
+      "max": 12,
+      "continueOnError": true,
+      "do": [
+        {
+          "id": "open-search",
+          "action": "goto",
+          "note": "直接用网址带上关键词、城市、行业（比点筛选框稳）",
+          "url": "https://www.zhipin.com/web/geek/jobs?query={{kw | urlencode}}&city={{inputs.city}}&industry={{inputs.industry}}",
+          "expect": {
+            "urlContains": "/web/geek/jobs"
+          }
+        },
+        {
+          "id": "wait-list",
+          "action": "waitFor",
+          "note": "等岗位卡片出现；没有结果时这一步软失败，继续下一个关键词",
+          "target": [
+            {
+              "css": "li.job-card-box"
+            },
+            {
+              "css": ".job-card-wrapper"
+            }
+          ],
+          "timeoutMs": 12000,
+          "optional": true
+        },
+        {
+          "id": "collect-cards",
+          "action": "collect",
+          "note": "收集卡片：链接、标题、公司、地点、标签",
+          "item": [
+            {
+              "css": "li.job-card-box"
+            },
+            {
+              "css": ".job-card-wrapper"
+            }
+          ],
+          "fields": {
+            "url": {
+              "target": [
+                {
+                  "css": "a.job-name"
+                },
+                {
+                  "css": "a[href*='job_detail']"
+                }
+              ],
+              "attr": "href",
+              "as": "url"
+            },
+            "title": {
+              "target": [
+                {
+                  "css": "a.job-name"
+                },
+                {
+                  "css": "a[href*='job_detail']"
+                }
+              ],
+              "text": true
+            },
+            "company": {
+              "target": [
+                {
+                  "css": ".boss-name"
+                },
+                {
+                  "css": "a[href*='gongsi']"
+                }
+              ],
+              "text": true,
+              "optional": true
+            },
+            "area": {
+              "target": [
+                {
+                  "css": ".company-location"
+                }
+              ],
+              "text": true,
+              "optional": true
+            },
+            "tags": {
+              "target": [
+                {
+                  "css": ".tag-list li"
+                }
+              ],
+              "text": true,
+              "all": true,
+              "optional": true
+            }
+          },
+          "dedupeBy": "url",
+          "limit": "{{inputs.perKeyword}}",
+          "maxScrolls": 4,
+          "optional": true,
+          "appendTo": {
+            "var": "jobs",
+            "dedupeBy": "url"
+          },
+          "filter": {
+            "contains": [
+              "{{item.area}}",
+              "{{inputs.cityName}}"
+            ]
+          }
+        },
+        {
+          "id": "rest-search",
+          "action": "wait",
+          "note": "关键词之间停 5–10 秒",
+          "ms": [
+            5000,
+            10000
+          ]
+        }
+      ]
+    },
+    {
+      "id": "enough-jobs",
+      "action": "assert",
+      "note": "少于 20 条时记录但继续",
+      "that": {
+        "countGte": [
+          "{{vars.jobs}}",
+          20
+        ]
+      },
+      "code": "NOT_ENOUGH_RESULTS",
+      "optional": true
+    },
+    {
+      "id": "read-each-job",
+      "action": "forEach",
+      "note": "逐个打开岗位详情读 JD，每个之间停 6–12 秒；只读，不点任何按钮",
+      "in": "{{vars.jobs}}",
+      "as": "job",
+      "max": 30,
+      "continueOnError": true,
+      "do": [
+        {
+          "id": "open-job",
+          "action": "goto",
+          "url": "{{job.url}}",
+          "expect": {
+            "exists": [
+              {
+                "css": ".job-sec-text"
+              },
+              {
+                "css": ".job-detail-section"
+              }
+            ]
+          }
+        },
+        {
+          "id": "read-jd",
+          "action": "read",
+          "target": [
+            {
+              "css": "#main"
+            },
+            {
+              "css": "body"
+            }
+          ],
+          "fields": {
+            "title": {
+              "target": [
+                {
+                  "css": ".job-banner .name h1"
+                },
+                {
+                  "css": "h1"
+                }
+              ],
+              "text": true,
+              "optional": true
+            },
+            "jd": {
+              "target": [
+                {
+                  "css": ".job-sec-text"
+                },
+                {
+                  "css": ".job-detail-section"
+                }
+              ],
+              "text": true,
+              "optional": true,
+              "default": ""
+            }
+          },
+          "saveAs": "detail"
+        },
+        {
+          "id": "rest-read",
+          "action": "wait",
+          "note": "像人一样读一会儿",
+          "ms": [
+            6000,
+            12000
+          ]
+        }
+      ],
+      "collectFrom": {
+        "url": "{{job.url}}",
+        "title": "{{job.title}}",
+        "company": "{{job.company}}",
+        "area": "{{job.area}}",
+        "tags": "{{job.tags}}",
+        "jd": "{{vars.detail.jd}}"
+      },
+      "saveAs": "details"
+    }
+  ],
+  "outputs": {
+    "from": "{{vars.details}}",
+    "schema": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "url",
+          "title",
+          "jd"
+        ]
+      }
+    }
+  },
+  "provenance": {
+    "source": "explored with snapshot/act on zhipin.com, then patched twice after the first real run (city filter, optional JD)",
+    "createdAt": "2026-11-24"
+  }
+}
