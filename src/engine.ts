@@ -13,6 +13,7 @@ import { evalCond, type PageProbe, type CondResult } from './conditions.js';
 import { resolveTarget, countTarget, textOfTarget } from './locator.js';
 import { inpageCall, inpageElementFn } from './inpage.js';
 import * as human from './human.js';
+import { preview } from './events.js';
 import { RunRecorder, StepRecord, ERROR_HINTS, errorCategory, lastSuccessFor, locatorDrift, readSteps } from './records.js';
 import { checkSchema } from './jsonschema.js';
 import { loadScriptCode, hostMatches } from './scripts.js';
@@ -192,6 +193,8 @@ export class Runner {
     const timeoutMs = this.opts.handoffTimeoutMs ?? 15 * 60 * 1000;
     const flag = path.join(this.rec.dir, 'CONTINUE');
     writeJson(path.join(this.rec.dir, 'HANDOFF.json'), { reason, since: new Date().toISOString(), continueFile: flag, until });
+    this.rec.events.emit('handoff.start', { reason, code, timeoutMs });
+    let resolved = false;
     await this.page.bringToFront().catch(() => {});
     log.info('\n' + '='.repeat(64));
     log.info(`🙋 需要人工处理 / HUMAN NEEDED: ${reason}`);
@@ -211,7 +214,9 @@ export class Runner {
         await sleep(1000);
       }
       if (Date.now() - started >= timeoutMs) throw new RpaError(code, `${reason} (no human action within ${Math.round(timeoutMs / 60000)} min)`);
+      resolved = true;
     } finally {
+      this.rec.events.emit('handoff.end', { code, waitedMs: Date.now() - started, resolved });
       rl?.close();
       fs.rmSync(flag, { force: true });
       fs.rmSync(path.join(this.rec.dir, 'HANDOFF.json'), { force: true });
@@ -254,7 +259,7 @@ export class Runner {
       inputs: maskInputs(this.tpl, this.scope.inputs),
       resumedFrom: this.opts.resumeFrom ?? null,
       options: { humanize: this.humanize, headless: !!this.opts.headless, handoff: this.handoffMode, screenshots: this.screenshots },
-    });
+    }, this.tpl.steps);
     log.info(`▶ ${this.tpl.id}@${this.tpl.version}  profile=${profile}  run=${this.rec.dir}`);
     if (resumeState) {
       this.scope.vars = resumeState.vars || {};
@@ -272,6 +277,7 @@ export class Runner {
       this.conn = this.opts.connected ?? (await connect(profile, { headless: this.opts.headless }));
       this.page = this.conn.page;
       this.page.on('dialog', (d) => d.dismiss().catch(() => {}));
+      this.watchPage(this.page);
       if (resumeState) {
         startIdx = this.nextTop;
         log.info(`↻ resuming at top-level step ${startIdx + 1}/${this.tpl.steps.length} "${this.tpl.steps[startIdx]?.id}" (skipping ${startIdx} finished step(s); from ${this.opts.resumeFrom})`);
@@ -305,6 +311,7 @@ export class Runner {
       if (output === null && this.tpl.outputs) output = (() => { try { return render(this.tpl.outputs.from, this.scope); } catch { return null; } })();
       if (!this.dossierWritten) await this.writeDossier(null, err, error.path ?? '-', null).catch(() => {});
     } finally {
+      if (this.page) this.unwatchPage(this.page);
       this.rec.writeOutput(output);
       if (this.conn && !this.opts.connected) {
         if ((this.conn.launchedHere && !this.opts.keepOpen) || this.opts.forceClose) await closeSession(this.conn.session.profile, this.conn.browser).catch(() => {});
@@ -325,6 +332,7 @@ export class Runner {
     const seq = this.rec.nextSeq();
     const started = Date.now();
     const urlBefore = this.page.url();
+    this.rec.events.emit('step.start', { step: seq, path: '_login-check', stepId: '_login-check', action: 'loginCheck', url: urlBefore });
     if (!this.page.url().startsWith(url)) await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
     let r = await this.waitCond(a.loginCheck, this.scope, 8000);
     let handoffMs = 0;
@@ -347,7 +355,11 @@ export class Runner {
   async screenshot(name: string, rec?: StepRecord) {
     const p = this.rec.artifactPath(`${String(rec?.seq ?? 0).padStart(4, '0')}-${name}.png`);
     await this.page.screenshot({ path: p, timeout: 5000 }).catch(() => {});
-    if (rec && fs.existsSync(p)) rec.artifacts.push(path.relative(this.rec.dir, p));
+    if (fs.existsSync(p)) {
+      const rel = path.relative(this.rec.dir, p);
+      rec?.artifacts.push(rel);
+      this.rec.artifact(rel, 'screenshot', rec?.seq);
+    }
   }
 
   async writeDossier(step: any | null, err: RpaError, stepPath: string, rec: StepRecord | null) {
@@ -390,6 +402,55 @@ export class Runner {
             ],
     };
     writeJson(path.join(fdir, 'dossier.json'), dossier);
+    if (fs.existsSync(path.join(fdir, 'screenshot.png'))) this.rec.artifact('failure/screenshot.png', 'failure-screenshot', rec?.seq);
+    this.rec.artifact('failure/dossier.json', 'dossier', rec?.seq);
+  }
+
+  // ---------- run data events (for viewer plugins; see docs/run-data-format.md) ----------
+  private navListener?: (f: any) => void;
+  watchPage(page: Page) {
+    const ev = this.rec.events;
+    human.observeInput(page, {
+      move: (to, from, ms) => ev.emit('pointer.move', { x: Math.round(to.x), y: Math.round(to.y), fromX: Math.round(from.x), fromY: Math.round(from.y), durationMs: ms }),
+      click: (at, button, count) => ev.emit('pointer.click', { x: Math.round(at.x), y: Math.round(at.y), button, count }),
+      wheel: (dy, at) => ev.emit('pointer.wheel', { dy, ...(at ? { x: Math.round(at.x), y: Math.round(at.y) } : {}) }),
+      type: (chars) => ev.emit('key.type', { chars }),
+    });
+    // the viewport size lets a viewer place pointer.* coordinates; a real Chrome window has no fixed viewport,
+    // so it is measured (in the isolated world) after each navigation and reported only when it changed
+    let lastVp = '';
+    const measure = () => {
+      const fixed = page.viewportSize();
+      const p = fixed ? Promise.resolve(fixed) : this.evalIso<any>('({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio })');
+      p.then((vp) => {
+        const k = JSON.stringify(vp);
+        if (vp && k !== lastVp && this.navListener) { lastVp = k; ev.emit('page.viewport', vp); }
+      }).catch(() => {});
+    };
+    const nav = (frame: any) => {
+      if (frame !== page.mainFrame()) return;
+      ev.emit('page.navigated', { url: frame.url() });
+      measure();
+    };
+    this.navListener = nav;
+    page.on('framenavigated', nav);
+    ev.emit('page.navigated', { url: page.url() });
+    measure();
+  }
+  unwatchPage(page: Page) {
+    human.observeInput(page, null);
+    if (this.navListener) page.off('framenavigated', this.navListener);
+    this.navListener = undefined;
+  }
+  /** One "data" event when a step stores what it extracted (saveAs / appendTo / collect). */
+  emitData(step: any, stepPath: string, rec: StepRecord, value: any) {
+    if (!step.saveAs && !step.appendTo && step.action !== 'collect') return;
+    const mode = step.appendTo ? 'append' : step.action === 'collect' ? 'collect' : 'save';
+    const added = rec.appended ? rec.appended.added : value == null ? 0 : Array.isArray(value) ? value.length : 1;
+    const e: any = { step: rec.seq, path: stepPath, mode, added, preview: preview(rec.appended && !Array.isArray(value) ? (value == null ? [] : [value]) : value) };
+    if (step.saveAs) e.var = step.saveAs;
+    if (rec.appended) Object.assign(e, { var: rec.appended.var, total: rec.appended.total, duplicates: rec.appended.duplicates });
+    this.rec.events.emit('data', e);
   }
 
   // ---------- step execution ----------
@@ -399,6 +460,7 @@ export class Runner {
       startedAt: new Date().toISOString(), durationMs: 0, urlBefore: this.page.url(), urlAfter: null,
       locator: null, expect: null, attempts: 0, output: null, artifacts: [],
     };
+    this.rec.events.emit('step.start', { step: rec.seq, path: stepPath, stepId: step.id, action: step.action, url: rec.urlBefore, ...(step.description ? { description: step.description } : {}) });
     const t0 = Date.now();
     const finish = () => {
       rec.durationMs = Date.now() - t0;
@@ -413,6 +475,7 @@ export class Runner {
         rec.output = truncateForRecord(out, 600);
         if (step.saveAs) scope.vars[step.saveAs] = out;
         if (step.appendTo) rec.appended = appendTo(scope, step.appendTo, out);
+        this.emitData(step, stepPath, rec, out);
         finish();
         return out;
       } catch (e: any) {
@@ -460,7 +523,10 @@ export class Runner {
           break;
         }
         if (lastErr.code === 'NAVIGATION_BLOCKED' || lastErr.code === 'SCRIPT_REJECTED' || lastErr.code === 'TEMPLATE_INVALID') break;
-        if (attempt <= retries) await sleep(600 * attempt);
+        if (attempt <= retries) {
+          this.rec.events.emit('step.retry', { step: rec.seq, path: stepPath, attempt: attempt + 1, error: { code: lastErr.code, message: lastErr.message } });
+          await sleep(600 * attempt);
+        }
       }
     }
 
@@ -486,6 +552,7 @@ export class Runner {
     rec.output = truncateForRecord(value);
     if (step.saveAs) scope.vars[step.saveAs] = value;
     if (step.appendTo) rec.appended = appendTo(scope, step.appendTo, value);
+    this.emitData(step, stepPath, rec, value);
     if (this.screenshots === 'every' || step.screenshot) await this.screenshot(step.id, rec);
     finish();
     log.info(`  ✓ ${stepPath} (${step.action}) ${rec.durationMs}ms${rec.locator?.hit > 0 ? ` [fallback locator #${rec.locator.hit}]` : ''}`);
@@ -526,6 +593,7 @@ export class Runner {
         let i = 0;
         for (; i < step.maxIterations; i++) {
           if (!(await this.cond(step.when, scope)).pass) break;
+          this.rec.events.emit('loop.iteration', { path: stepPath, index: i, max: step.maxIterations });
           for (const s of step.do) await this.execStep(s, `${stepPath}[${i}].${s.id}`, scope);
         }
         rec.note = `${i} iteration(s)`;
@@ -552,6 +620,7 @@ export class Runner {
         for (let i = from; i < Math.min(list.length, max); i++) {
           for (const k of innerSaves) delete scope.vars[k];
           const s2: Scope = { ...scope, [step.as]: list[i], index: i };
+          this.rec.events.emit('loop.iteration', { path: stepPath, index: i, total: Math.min(list.length, max), item: preview(list[i], 1, 200) });
           try {
             for (const s of step.do) await this.execStep(s, `${stepPath}[${i}].${s.id}`, s2);
             if (step.collectFrom !== undefined) results.push(render(step.collectFrom, s2));
@@ -731,6 +800,7 @@ export class Runner {
         const dest = path.join(dir, s.filename || dl.suggestedFilename());
         await dl.saveAs(dest);
         rec.artifacts.push(path.relative(this.rec.dir, dest));
+        this.rec.artifact(path.relative(this.rec.dir, dest), 'download', rec.seq);
         return dest;
       }
       case 'runScript': {
