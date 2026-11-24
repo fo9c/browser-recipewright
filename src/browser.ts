@@ -111,14 +111,13 @@ export async function listSessions(): Promise<SessionInfo[]> {
   return out;
 }
 
-/** Launch a fresh Chrome for this profile (detached, so it can outlive the CLI call). */
-export async function launchChrome(profile: string, opts: { headless?: boolean; url?: string } = {}): Promise<SessionInfo> {
-  const chrome = findChrome();
-  if (!chrome) throw new RpaError('BROWSER_ERROR', 'Google Chrome not found. Install Chrome, or set BROWSER_RECIPEWRIGHT_CHROME=/path/to/chrome');
-  const userDataDir = ensureDir(profileDir(profile));
-  const portFile = path.join(userDataDir, 'DevToolsActivePort');
-  fs.rmSync(portFile, { force: true });
-  const firstRun = !fs.existsSync(path.join(userDataDir, 'Default'));
+/**
+ * Command-line flags for the Chrome we spawn. Exported so tests can check them.
+ * The three "background" flags stop Chrome from slowing down a window that is minimized, covered by
+ * another window, or in a background tab. Without them, timers and page repaints are throttled and
+ * actionability checks ("is the element stable?") can stall until they time out.
+ */
+export function chromeArgs(userDataDir: string, opts: { headless?: boolean; firstRun?: boolean; url?: string } = {}): string[] {
   const args = [
     `--user-data-dir=${userDataDir}`,
     '--remote-debugging-port=0',
@@ -129,11 +128,27 @@ export async function launchChrome(profile: string, opts: { headless?: boolean; 
     '--hide-crash-restore-bubble',
     // Chrome turns navigator.webdriver on whenever remote debugging is enabled; this keeps it false
     '--disable-blink-features=AutomationControlled',
+    // keep running at full speed when the user minimizes / covers the window or switches tabs
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
   ];
-  if (firstRun || opts.headless) args.push('--window-size=1280,900');
+  if (opts.firstRun || opts.headless) args.push('--window-size=1280,900');
   if (opts.headless) args.push('--headless=new');
   if (process.platform === 'linux' && process.getuid?.() === 0) args.push('--no-sandbox');
   args.push(opts.url || 'about:blank');
+  return args;
+}
+
+/** Launch a fresh Chrome for this profile (detached, so it can outlive the CLI call). */
+export async function launchChrome(profile: string, opts: { headless?: boolean; url?: string } = {}): Promise<SessionInfo> {
+  const chrome = findChrome();
+  if (!chrome) throw new RpaError('BROWSER_ERROR', 'Google Chrome not found. Install Chrome, or set BROWSER_RECIPEWRIGHT_CHROME=/path/to/chrome');
+  const userDataDir = ensureDir(profileDir(profile));
+  const portFile = path.join(userDataDir, 'DevToolsActivePort');
+  fs.rmSync(portFile, { force: true });
+  const firstRun = !fs.existsSync(path.join(userDataDir, 'Default'));
+  const args = chromeArgs(userDataDir, { headless: opts.headless, firstRun, url: opts.url });
   const child = spawn(chrome, args, { detached: true, stdio: 'ignore' });
   child.unref();
   const deadline = Date.now() + 30000;

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>interference test</title>
+<!-- Used by e2e tests: simulates a user (or the page) changing things while the robot works.
+     ?move=1  : a few mouse-move events into the robot's mouse path, the real button jumps away and a "trap" button takes its place
+     ?steal=1 : after the first typed character, focus jumps to another input -->
+<style>
+  body { margin: 0; font: 16px sans-serif; }
+  button { position: absolute; left: 100px; width: 180px; height: 44px; }
+  #target { top: 300px; }
+  #trap { top: 300px; display: none; background: #fdd; }
+  #fields { position: absolute; top: 420px; left: 100px; }
+  #fields input { display: block; margin: 8px 0; width: 240px; }
+  #result { position: absolute; top: 560px; left: 100px; }
+</style>
+<button id="target">Real target</button>
+<button id="trap">Trap</button>
+<div id="fields"><input id="box" aria-label="box"><input id="other" aria-label="other"></div>
+<p id="result">clicks=|box=|other=</p>
+<script>
+  const q = new URLSearchParams(location.search);
+  const $ = (id) => document.getElementById(id);
+  const clicks = [];
+  const show = () => ($('result').textContent = `clicks=${clicks.join(',')}|box=${$('box').value}|other=${$('other').value}`);
+  $('target').addEventListener('click', () => { clicks.push('target'); show(); });
+  $('trap').addEventListener('click', () => { clicks.push('trap'); show(); });
+  $('box').addEventListener('input', show);
+  $('other').addEventListener('input', show);
+  let moves = 0;
+  document.addEventListener('mousemove', () => {
+    if (!q.has('move') || ++moves !== 3) return;
+    $('target').style.top = '200px';
+    $('trap').style.display = 'block';
+  });
+  let stolen = false;
+  $('box').addEventListener('input', () => {
+    if (stolen || !q.has('steal')) return;
+    stolen = true;
+    setTimeout(() => $('other').focus(), 0);
+  });
+</script>

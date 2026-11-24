@@ -195,3 +195,30 @@ test('login fills template inputs into the login URL', { skip }, async () => {
   assert.match(r.stderr, new RegExp(`${srv.url.replace(/[.:/]/g, '\\$&')}/home\\.html`));
 });
 
+
+// the user (or the page) changes things while the robot works: the click must not land on whatever
+// took the old spot, and typed text must not end up in another field
+const readResult = async () => {
+  const r = await cli('act', 'read', '-p', 'demo/e2e', '--step', JSON.stringify({ action: 'read', target: [{ css: '#result' }], text: true }));
+  return JSON.stringify(r.json);
+};
+
+test('click re-aims when the target moves during the mouse move', { skip }, async () => {
+  await cli('launch', '--headless', '-p', 'demo/e2e');
+  assert.equal((await cli('act', 'goto', '--url', `${srv.url}/interfere.html?move=1`, '-p', 'demo/e2e')).json.status, 'success');
+  const act = await cli('act', 'click', '--target', JSON.stringify([{ css: '#target' }]), '-p', 'demo/e2e');
+  assert.equal(act.json.status, 'success', act.stdout + act.stderr);
+  const res = await readResult();
+  assert.match(res, /clicks=target\|/, res);
+  assert.doesNotMatch(res, /trap/, res);
+  assert.match(act.stderr, /aiming again/);
+});
+
+test('typing keeps its focus when something else grabs it', { skip }, async () => {
+  assert.equal((await cli('act', 'goto', '--url', `${srv.url}/interfere.html?steal=1`, '-p', 'demo/e2e')).json.status, 'success');
+  const act = await cli('act', 'type', '--target', JSON.stringify([{ css: '#box' }]), '--text', 'hello world', '-p', 'demo/e2e');
+  assert.equal(act.json.status, 'success', act.stdout + act.stderr);
+  const res = await readResult();
+  assert.match(res, /box=hello world\|other=(?!\w)/, res);
+  assert.match(act.stderr, /lost focus while typing/);
+});
