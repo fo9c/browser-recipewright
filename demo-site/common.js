@@ -36,10 +36,10 @@
   function postHtml(p) {
     const like = p.likes ? fmt(p.likes) + ' Likes. Like' : 'Like';
     return (
-      '<article data-testid="tweet" role="article" class="post">' +
-      '<div class="head"><div data-testid="User-Name"><b>' + p.name + '</b> <span>@' + p.handle + '</span></div>' +
+      '<article data-testid="post" role="article" class="post">' +
+      '<div class="head"><div data-testid="author"><b>' + p.name + '</b> <span>@' + p.handle + '</span></div>' +
       '<a href="/' + p.handle + '/status/' + p.id + '"><time datetime="' + new Date(Date.UTC(2026, 10, 22, 12) - p.hoursAgo * 3600e3).toISOString() + '">' + p.hoursAgo + 'h</time></a></div>' +
-      (p.hasText ? '<div data-testid="tweetText" lang="en">' + p.text + '</div>' : '<div class="media">[image]</div>') +
+      (p.hasText ? '<div data-testid="post-text" lang="en">' + p.text + '</div>' : '<div class="media">[image]</div>') +
       '<div class="actions"><button data-testid="reply" aria-label="Reply">💬</button>' +
       '<button data-testid="like" aria-label="' + like + '">♡ <span>' + (p.likes ? fmt(p.likes) : '') + '</span></button></div>' +
       '</article>'

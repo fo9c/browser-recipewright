@@ -1,4 +1,4 @@
-/** Tiny static server for the bundled demo site (an X-like infinite feed for offline testing). */
+/** Tiny static server for the bundled demo site (a generated infinite feed for offline testing, plus the self-check page). */
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';

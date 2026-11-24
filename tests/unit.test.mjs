@@ -89,7 +89,7 @@ test('applyPatch: step-scoped ops + version bump + provenance', () => {
   const tpl = load('../templates/demo/local-feed.json');
   const { template } = applyPatch(tpl, [
     { stepId: 'collect-posts', op: 'merge', value: { maxScrolls: 60 }, note: 'more scrolling' },
-    { stepId: 'read-main', ops: [{ op: 'replace', path: '/target/0', value: { testid: 'tweet', nth: 0 } }] },
+    { stepId: 'read-main', ops: [{ op: 'replace', path: '/target/0', value: { testid: 'post', nth: 0 } }] },
     { stepId: 'rest', op: 'remove' },
   ]);
   assert.equal(template.version, '0.1.1');

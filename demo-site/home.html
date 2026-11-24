@@ -9,14 +9,14 @@
   const app = document.getElementById('app');
   if (localStorage.getItem('loggedIn') === '1') {
     app.innerHTML = `<div class="layout"><nav aria-label="Primary">
-      <a href="/home.html" data-testid="AppTabBar_Home_Link">Home</a>
-      <a href="/search.html?q=agent" data-testid="AppTabBar_Explore_Link">Explore</a>
-      <button data-testid="SideNav_AccountSwitcher_Button" aria-label="Account menu">@demo_user</button>
+      <a href="/home.html" data-testid="nav-home">Home</a>
+      <a href="/search.html?q=agent" data-testid="nav-explore">Explore</a>
+      <button data-testid="account-menu" aria-label="Account menu">@demo_user</button>
       <a href="/home.html?logout=1">Log out</a></nav>
-      <main><div class="searchbar"><form action="/search.html"><input data-testid="SearchBox_Search_Input" name="q" placeholder="Search" aria-label="Search query" role="combobox"></form></div>
+      <main><div class="searchbar"><form action="/search.html"><input data-testid="search-input" name="q" placeholder="Search" aria-label="Search query" role="combobox"></form></div>
       <h2 style="padding:0 16px">Welcome back</h2></main></div>`;
   } else {
-    app.innerHTML = `<div class="login"><h1>Happening now (demo)</h1><p>This demo site imitates a logged-in social feed. Click to "log in".</p>
+    app.innerHTML = `<div class="login"><h1>Demo feed</h1><p>This demo site imitates a logged-in social feed. Click to "log in".</p>
       <button data-testid="loginButton" onclick="localStorage.setItem('loggedIn','1');location.reload()">Log in</button></div>`;
   }
 </script>

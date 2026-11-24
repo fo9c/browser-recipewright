@@ -117,7 +117,7 @@ test('broken locator → dossier → patch → resume succeeds', { skip }, async
   assert.equal(d.failedStepId, 'collect-posts');
   assert.ok(fs.existsSync(path.join(r.json.runDir, 'failure', 'snapshot.txt')));
   const patch = path.join(HOME, 'patch.json');
-  fs.writeFileSync(patch, JSON.stringify({ stepId: 'collect-posts', ops: [{ op: 'replace', path: '/item', value: [{ testid: 'tweet' }, { role: 'article' }] }] }));
+  fs.writeFileSync(patch, JSON.stringify({ stepId: 'collect-posts', ops: [{ op: 'replace', path: '/item', value: [{ testid: 'post' }, { role: 'article' }] }] }));
   assert.equal((await cli('patch', file, patch, '--write')).json.version, '0.1.1');
   const r2 = await cli('run', file, '--resume', r.json.runDir, '-p', 'demo/e2e', '--no-handoff');
   assert.match(r2.stderr, /↻ resuming at top-level step \d+\/\d+ "/, r2.stderr);

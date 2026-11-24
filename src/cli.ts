@@ -112,7 +112,7 @@ program
 program
   .command('launch')
   .description('start (or reuse) a Chrome window for a profile and keep it running for snapshot/act')
-  .option('-p, --profile <site/account>', 'profile, e.g. x.com/main', 'default/default')
+  .option('-p, --profile <site/account>', 'profile, e.g. example.com/main', 'default/default')
   .option('-u, --url <url>', 'open this URL')
   .option('--headless', 'no window')
   .action(wrap(async (o) => {
@@ -491,7 +491,7 @@ program
 // ---------------- demo ----------------
 program
   .command('demo')
-  .description('offline self-test: serve the bundled X-like demo feed and run templates/demo/local-feed against it')
+  .description('offline self-test: serve the bundled demo feed (generated content) and run templates/demo/local-feed against it')
   .option('--headless', 'no window')
   .option('--keep-open', 'leave Chrome open')
   .action(wrap(async (o) => {

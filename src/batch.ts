@@ -5,9 +5,9 @@
  * batch.json
  * {
  *   "name": "x-daily-read",
- *   "template": "x.com/search-read-posts",
+ *   "template": "demo/local-feed",
  *   "inputs": { "count": 5 },                         // shared inputs
- *   "accounts": [ { "id": "main", "profile": "x.com/main", "inputs": { "keyword": "AI agent" } } ],
+ *   "accounts": [ { "id": "main", "profile": "demo/main", "inputs": { "keyword": "agent" } } ],
  *   "accountsFile": "accounts.csv",                   // optional: columns id,profile,<input>...
  *   "jobs": [ { "account": "main", "inputs": { "keyword": "RPA" } } ],  // optional explicit job list (account × params)
  *   "jobsFile": "jobs.csv",                           // optional: columns account,<input>...
