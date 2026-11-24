@@ -127,7 +127,7 @@ test('broken locator → dossier → patch → resume succeeds', { skip }, async
   assert.equal(d.failedStepId, 'collect-posts');
   assert.ok(fs.existsSync(path.join(r.json.runDir, 'failure', 'snapshot.txt')));
   const patch = path.join(HOME, 'patch.json');
-  fs.writeFileSync(patch, JSON.stringify({ stepId: 'collect-posts', ops: [{ op: 'replace', path: '/item', value: [{ testid: 'tweet' }, { role: 'article' }] }] }));
+  fs.writeFileSync(patch, JSON.stringify({ stepId: 'collect-posts', ops: [{ op: 'replace', path: '/item', value: [{ testid: 'post' }, { role: 'article' }] }] }));
   assert.equal((await cli('patch', file, patch, '--write')).json.version, '0.1.1');
   const r2 = await cli('run', file, '--resume', r.json.runDir, '-p', 'demo/e2e', '--no-handoff');
   assert.match(r2.stderr, /↻ resuming at top-level step \d+\/\d+ "/, r2.stderr);
@@ -231,4 +231,15 @@ test('typing keeps its focus when something else grabs it', { skip }, async () =
   const res = await readResult();
   assert.match(res, /box=hello world\|other=(?!\w)/, res);
   assert.match(act.stderr, /lost focus while typing/);
+});
+
+test('selfcheck: built-in recipe exercises every core action on the local page', { skip }, async () => {
+  const r = await cli('selfcheck', '--headless');
+  assert.equal(r.json.status, 'pass', r.stdout + r.stderr);
+  assert.ok(r.json.checks.length >= 15);
+  for (const c of r.json.checks) assert.equal(c.status, 'pass', JSON.stringify(c));
+  assert.equal(r.json.observed.trusted, 'yes');
+  assert.equal(r.json.observed.rowsLoaded, 40);
+  assert.equal(r.json.observed.webdriver, 'false');
+  assert.match(r.stderr, /自检通过/);
 });

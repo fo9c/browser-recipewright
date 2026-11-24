@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Self-check / 自检页</title>
+<style>
+  body { font-family: -apple-system, system-ui, "PingFang SC", sans-serif; margin: 0; background: #fff; color: #1f2328; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #656d76; margin: 0 0 20px; }
+  section { border: 1px solid #d0d7de; border-radius: 8px; padding: 14px 16px; margin: 14px 0; }
+  section h2 { font-size: 15px; margin: 0 0 10px; color: #424a53; }
+  label { display: block; margin: 8px 0; }
+  input[type=text], select { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px; }
+  button { padding: 6px 14px; border: 1px solid #d0d7de; border-radius: 6px; background: #f6f8fa; cursor: pointer; font-size: 14px; }
+  .out { color: #1a7f37; margin-top: 8px; min-height: 1.2em; }
+  .tip { display: none; margin-top: 8px; padding: 6px 10px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; }
+  #hover-zone:hover + .tip, .tip.on { display: block; }
+  .row { padding: 10px 0; border-bottom: 1px solid #eaeef2; }
+  #more { color: #656d76; padding: 10px 0; }
+  table { border-collapse: collapse; font-size: 13px; }
+  td { padding: 2px 10px 2px 0; }
+</style>
+</head>
+<body>
+<main>
+  <!-- A local page that exercises every core browser action. Nothing here talks to the network. -->
+  <h1 data-testid="sc-title">browser-recipewright 自检页</h1>
+  <p class="sub">这个页面只在你自己的电脑上运行，用来确认安装好的浏览器能被正确操作。</p>
+
+  <section id="form-section">
+    <h2>1. 表单：输入 / 选择 / 勾选 / 点击</h2>
+    <label>名字 <input type="text" data-testid="sc-name" aria-label="名字" autocomplete="off"></label>
+    <label>颜色
+      <select data-testid="sc-color" aria-label="颜色">
+        <option value="">请选择</option><option value="red">红</option><option value="green">绿</option><option value="blue">蓝</option>
+      </select>
+    </label>
+    <label><input type="checkbox" data-testid="sc-agree"> 我已阅读</label>
+    <button type="button" data-testid="sc-submit">提交</button>
+    <div class="out" data-testid="sc-form-result"></div>
+  </section>
+
+  <section>
+    <h2>2. 按键：输入后按回车</h2>
+    <input type="text" data-testid="sc-search" aria-label="搜索" placeholder="输入后按回车" autocomplete="off">
+    <div class="out" data-testid="sc-search-result"></div>
+  </section>
+
+  <section>
+    <h2>3. 等待：1.5 秒后才出现的内容</h2>
+    <div data-testid="sc-late-slot"></div>
+  </section>
+
+  <section>
+    <h2>4. 悬停：把鼠标移上去才显示提示</h2>
+    <button type="button" id="hover-zone" data-testid="sc-hover">悬停这里</button>
+    <div class="tip" data-testid="sc-tooltip">提示出现了</div>
+  </section>
+
+  <section>
+    <h2>5. 滚动 + 批量提取：滚到底部会继续加载</h2>
+    <div id="list"></div>
+    <div id="more">加载中…</div>
+  </section>
+
+  <section>
+    <h2>6. 跳转：打开第二页再返回</h2>
+    <a href="/selfcheck-next.html" data-testid="sc-next">去第二页</a>
+  </section>
+
+  <section>
+    <h2>7. 页面观察到的情况（自检配方会读取这里）</h2>
+    <table data-testid="sc-report">
+      <tr><td>所有输入事件都是可信事件 (isTrusted)</td><td data-testid="r-trusted"></td></tr>
+      <tr><td>点击前鼠标移动次数</td><td data-testid="r-moves"></td></tr>
+      <tr><td>按键次数</td><td data-testid="r-keys"></td></tr>
+      <tr><td>按键间隔不完全相同</td><td data-testid="r-varied"></td></tr>
+      <tr><td>列表已加载条数</td><td data-testid="r-rows"></td></tr>
+      <tr><td>navigator.webdriver</td><td data-testid="r-webdriver"></td></tr>
+    </table>
+  </section>
+</main>
+<script>
+(function () {
+  const $ = (id) => document.querySelector('[data-testid="' + id + '"]');
+  const stats = { untrusted: 0, moves: 0, movesBeforeClick: 0, keys: 0, lastKey: 0, gaps: [] };
+
+  // --- input fingerprint: what a careful site could observe ---
+  document.addEventListener('mousemove', (e) => { if (!e.isTrusted) stats.untrusted++; stats.moves++; }, true);
+  document.addEventListener('mousedown', (e) => { if (!e.isTrusted) stats.untrusted++; stats.movesBeforeClick = Math.max(stats.movesBeforeClick, stats.moves); }, true);
+  document.addEventListener('click', (e) => { if (!e.isTrusted) stats.untrusted++; }, true);
+  document.addEventListener('keydown', (e) => {
+    if (!e.isTrusted) stats.untrusted++;
+    const now = performance.now();
+    if (stats.lastKey) stats.gaps.push(Math.round(now - stats.lastKey));
+    stats.lastKey = now;
+    stats.keys++;
+  }, true);
+  function report() {
+    $('r-trusted').textContent = stats.untrusted === 0 ? 'yes' : 'no (' + stats.untrusted + ')';
+    $('r-moves').textContent = String(stats.movesBeforeClick);
+    $('r-keys').textContent = String(stats.keys);
+    $('r-varied').textContent = new Set(stats.gaps).size > 1 ? 'yes' : 'no';
+    $('r-rows').textContent = String(document.querySelectorAll('[data-testid="sc-row"]').length);
+    $('r-webdriver').textContent = String(navigator.webdriver);
+  }
+  setInterval(report, 200);
+  report();
+
+  // 1. form
+  $('sc-submit').addEventListener('click', () => {
+    const name = $('sc-name').value.trim(), color = $('sc-color').value, agree = $('sc-agree').checked;
+    $('sc-form-result').textContent = name && color && agree ? '提交成功：' + name + ' / ' + color : '请填完整';
+  });
+
+  // 2. press Enter
+  $('sc-search').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') $('sc-search-result').textContent = '已搜索：' + $('sc-search').value.trim();
+  });
+
+  // 3. late element
+  setTimeout(() => { $('sc-late-slot').innerHTML = '<div class="out" data-testid="sc-late">延迟内容已出现</div>'; }, 1500);
+
+  // 4. hover (CSS handles the real hover; class is a fallback for touch screens)
+  $('sc-hover').addEventListener('mouseenter', () => $('sc-tooltip').classList.add('on'));
+
+  // 5. lazy list: 40 rows, 10 at a time, next batch only when scrolled near the bottom
+  const list = document.getElementById('list'), more = document.getElementById('more');
+  let n = 0, busy = false;
+  function load() {
+    if (busy || n >= 40) return;
+    busy = true;
+    setTimeout(() => {
+      for (let k = 0; k < 10 && n < 40; k++) {
+        n++;
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.setAttribute('data-testid', 'sc-row');
+        row.innerHTML = '<b data-testid="sc-row-title">条目 ' + n + '</b> · <span data-testid="sc-row-score">' + (n * 7 % 100) + '</span> 分';
+        list.appendChild(row);
+      }
+      more.textContent = n >= 40 ? '已经到底了' : '向下滚动加载更多';
+      busy = false;
+    }, n === 0 ? 50 : 300);
+  }
+  load();
+  window.addEventListener('scroll', () => {
+    if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 200) load();
+  }, { passive: true });
+})();
+</script>
+</body>
+</html>

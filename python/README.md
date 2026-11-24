@@ -8,9 +8,9 @@ pip install -e python/          # from the repo root
 
 ```python
 from browser_recipewright import run, to_csv, flatten_posts
-res = run("x.com/search-read-posts", {"keyword": "AI agent", "count": 3})
+res = run("demo/local-feed", {"keyword": "agent", "count": 3})   # needs `browser-recipewright demo-server` running
 if res.ok:
-    to_csv(flatten_posts(res.output), "posts.csv")
+    to_csv(flatten_posts(res.output, base="http://127.0.0.1:4173"), "posts.csv")
 else:
     print(res.error)            # {"code": "LOGIN_REQUIRED", ...}
 ```

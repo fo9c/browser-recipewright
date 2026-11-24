@@ -21,7 +21,7 @@ AI 探索一次网页，写下一份可复用的「配方」；之后真实 Chro
 
 ## 一句话理解
 
-> 你对 AI 说「在 X 上搜 AI agent，找 5 条点赞过 100 的帖子，读正文和评论」。
+> 你对 AI 说「打开这个网站，搜某个关键词，把前 20 条结果的标题和链接整理成表格」。
 > AI 第一次自己摸索页面，把做法写成一份 JSON 配方；以后同样的事，浏览器直接照配方做，**快、稳、可复查**。
 
 ```
@@ -30,16 +30,20 @@ AI 探索一次网页，写下一份可复用的「配方」；之后真实 Chro
                                               └──── ④ 只修失败的那一步（补丁 + 续跑） ◀──┘
 ```
 
-## 已验证的数据
+## 自检：确认浏览器能被正确操作
 
-| 场景 | 结果 |
+装好后跑一次 `browser-recipewright selfcheck`。它会在本机启动一个自带的测试网页（不联网、不需要账号），用内置配方 `selfcheck/basic` 逐项检查：
+
+| 检查项 | 说明 |
 |---|---|
-| X（推特）关键词搜索 → 读 5 条帖子 + 评论 | 真实账号连续 **20 / 20 次成功**，未触发验证码（2026-11-23） |
-| 浏览器指纹自检（bot.sannysoft.com） | 各项检查通过 |
-| Boss直聘：按城市 / 行业读 30 个职位，筛出 3 个（只读） | 一次跑通（2026-11-24） |
-| 自动化测试 | 单元 15 + 端到端 12（真实 Chrome + 离线演示站），每次提交在 CI 上跑 |
+| 打开页面、点击链接跳转、浏览器返回 | 导航 |
+| 逐字输入、下拉选择、勾选、按回车 | 表单与键盘 |
+| 鼠标沿轨迹移动后点击、悬停显示提示 | 鼠标 |
+| 等待 1.5 秒后才出现的内容 | 等待 |
+| 滚动分批加载的列表并提取全部 40 条 | 滚动与批量提取 |
+| 页面看到的输入都是可信事件、按键节奏有快有慢、`navigator.webdriver` 未暴露 | 拟人化输入 |
 
-> 以上是个人自动化场景下的实测，不代表任何网站"无法检测"。请遵守[负责任使用说明](docs/responsible-use.md)。
+每项一行通过 / 失败，失败时会给出错误码和运行记录目录。自动化测试（单元 + 端到端，真实 Chrome + 本地测试页）在每次提交时由 CI 运行。
 
 ## 和其他方式比
 
@@ -62,7 +66,7 @@ AI 探索一次网页，写下一份可复用的「配方」；之后真实 Chro
 - **多账号批量**：账号清单 × 模板 × 每账号参数，带间隔、每日上限、跳过登录失效账号、每账号独立记录、断点续跑。
 - **不绑定 Agent**：主要以 Skill 形式分发（`skills/browser-recipewright/SKILL.md`），任何能运行命令行的 Agent 都能用。
 
-> 第一次使用请看 **[Mac 上手指南](docs/getting-started.zh.md)**（10 分钟：安装 → 离线演示 → 登录 X → 跑 M1 模板）。
+> 第一次使用请看 **[Mac 上手指南](docs/getting-started.zh.md)**（10 分钟：安装 → 自检 → 离线演示 → 写自己的配方）。
 
 ## 快速体验
 
@@ -72,17 +76,12 @@ cd browser-recipewright
 npm install          # 会自动编译
 npm link             # 之后就能直接用 browser-recipewright 命令
 
-browser-recipewright doctor   # 自检：Node、Chrome、navigator.webdriver
-browser-recipewright demo     # 离线演示：一个模仿 X 结构的本地无限滚动页面
+browser-recipewright doctor      # 环境检查：Node、Chrome、navigator.webdriver
+browser-recipewright selfcheck   # 自检：在本地测试页上跑一遍所有核心浏览器操作
+browser-recipewright demo        # 离线演示：本地生成的无限滚动信息流，搜索并读帖子
 ```
 
-在 X 上跑 M1 场景（搜索关键词 → 滚动找 5 条点赞 ≥50 的帖子 → 逐条读正文和评论）：
-
-```bash
-browser-recipewright login x.com/search-read-posts                 # 第一次：在弹出的窗口里登录 X，登录成功会自动检测到
-browser-recipewright run x.com/search-read-posts -i keyword="AI agent"
-browser-recipewright run x.com/search-read-posts -i keyword="RPA" -i count=3 -i minLikes=200 -i tab=live
-```
+要在你自己常用的网站上用，让 AI 用 `snapshot` / `act` 探索页面，再把做法保存成配方（见 [Skill 说明](skills/browser-recipewright/SKILL.md)）。
 
 结果在命令输出的 `output` 路径里（`output.json`），完整记录在 `runDir`。
 
@@ -93,7 +92,7 @@ mkdir -p ~/.claude/skills
 ln -s "$(pwd)/skills/browser-recipewright" ~/.claude/skills/browser-recipewright
 ```
 
-然后直接对 Claude 说："用 browser-recipewright 在 X 上搜 'AI agent'，找 5 条点赞过 100 的帖子，读正文和前 10 条评论"。
+然后直接用自然语言告诉 Claude 你想在某个网站上做什么，例如"用 browser-recipewright 打开 <网址>，搜索 <关键词>，把前 20 条结果整理成表格"。
 其他 Agent（Codex、Cursor、自研 Agent）把 `skills/browser-recipewright/SKILL.md` 的内容放进系统提示或规则文件即可。
 
 ## 工作方式
@@ -111,8 +110,9 @@ ln -s "$(pwd)/skills/browser-recipewright" ~/.claude/skills/browser-recipewright
 
 | 命令 | 作用 |
 |---|---|
-| `doctor` | 环境自检 |
-| `demo` / `demo-server` | 离线演示 / 只启动演示站 |
+| `doctor` | 环境检查 |
+| `selfcheck` | 在本地测试页上检查所有核心浏览器操作 |
+| `demo` / `demo-server` | 离线演示 / 只启动演示站和自检页 |
 | `login <模板或站点> [-p 账号]` | 打开该账号的浏览器让人登录一次 |
 | `launch` / `close` / `sessions` | 启动、关闭、列出常驻浏览器 |
 | `snapshot [--json] [--text]` | 页面大纲 + `[ref=rN]` + 每个 ref 的现成定位器 |
@@ -144,11 +144,11 @@ ln -s "$(pwd)/skills/browser-recipewright" ~/.claude/skills/browser-recipewright
 ```
 src/            TypeScript 内核：browser（启动/连接）、locator、human（拟人化输入）、engine（执行器）、
                 validate（静态校验）、records（运行记录）、heal（补丁）、batch（批量）、cli
-templates/      内置模板库（x.com/search-read-posts、demo/local-feed）
+templates/      内置配方（selfcheck/basic 自检、demo/local-feed 演示），只针对本地页面
 scripts/        白名单页面脚本 + manifest（sha256 + 域名限制）
 skills/         Skill 分发形态（SKILL.md + references）
 schema/         模板 JSON Schema
-demo-site/      离线演示站（生成的假数据，模仿无限滚动信息流的结构）
+demo-site/      本地测试页：自检页 + 离线演示站（生成的假数据）
 python/         Python 小工具（调用 CLI、读运行记录、导出 CSV）
 tests/          单元测试 + 端到端测试（真实 Chrome + 演示站）
 ```
@@ -159,12 +159,11 @@ tests/          单元测试 + 端到端测试（真实 Chrome + 演示站）
 - [x] 按步骤补丁 + 续跑、多账号批量、Skill 分发
 - [ ] 实时可视化面板：执行时同步展示网页、事件流和数据流，可回放
 - [ ] 无障碍树（AX tree）优先的定位器，CSS / 文本兜底
-- [ ] 更多只读示例配方（欢迎[贡献](CONTRIBUTING.md)）
 - [ ] 发布到 npm，`npx browser-recipewright` 一键体验
 
 ## 参与
 
-欢迎提 Issue 和 PR，尤其是新配方。请先看 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
+欢迎提 Issue 和 PR。请先看 [CONTRIBUTING.md](CONTRIBUTING.md)。安全问题请按 [SECURITY.md](SECURITY.md) 私下报告。
 
 ## 边界
 

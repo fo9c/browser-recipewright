@@ -14,7 +14,7 @@ import { buildJsonSchema } from '../dist/schema.js';
 const load = (p) => JSON.parse(fs.readFileSync(new URL(p, import.meta.url)));
 
 test('built-in templates are valid', () => {
-  for (const p of ['../templates/x.com/search-read-posts.json', '../templates/demo/local-feed.json']) {
+  for (const p of ['../templates/selfcheck/basic.json', '../templates/demo/local-feed.json']) {
     const r = validateTemplate(load(p));
     assert.equal(r.ok, true, JSON.stringify(r.errors, null, 2));
   }
@@ -44,7 +44,7 @@ test('render: whole-value refs keep type, filters work', () => {
   assert.deepEqual(render('{{vars.list}}', scope), [1, 2]);
   assert.equal(render('x?q={{inputs.q | urlencode}}', scope), 'x?q=a%20b');
   assert.equal(render('{{inputs.n | number}}', scope), 5);
-  assert.equal(render('https://x.com{{post.url}}', scope), 'https://x.com/u/status/1');
+  assert.equal(render('https://example.com{{post.url}}', scope), 'https://example.com/u/status/1');
   assert.equal(render('{{vars.list | length}}', scope), 2);
 });
 
@@ -74,40 +74,42 @@ test('postFields applies pattern/as/optional', () => {
 });
 
 test('coerceInputs: defaults, types, required', () => {
-  const tpl = load('../templates/x.com/search-read-posts.json');
+  const feed = load('../templates/demo/local-feed.json');
+  // an input without a default is required
+  const tpl = { ...feed, inputs: { ...feed.inputs, keyword: { type: 'string', description: 'required here' } } };
   assert.throws(() => coerceInputs(tpl, {}), /missing required input "keyword"/);
   const v = coerceInputs(tpl, { keyword: 'ai', count: '3' });
   assert.equal(v.count, 3);
-  assert.equal(v.minLikes, 50);
+  assert.equal(v.minLikes, 100);
   assert.throws(() => coerceInputs(tpl, { keyword: 'ai', tab: 'nope' }), /must be one of/);
   assert.throws(() => coerceInputs(tpl, { keyword: 'ai', bogus: 1 }), /unknown input/);
 });
 
 test('applyPatch: step-scoped ops + version bump + provenance', () => {
-  const tpl = load('../templates/x.com/search-read-posts.json');
+  const tpl = load('../templates/demo/local-feed.json');
   const { template } = applyPatch(tpl, [
     { stepId: 'collect-posts', op: 'merge', value: { maxScrolls: 60 }, note: 'more scrolling' },
-    { stepId: 'read-main', ops: [{ op: 'replace', path: '/target/0', value: { testid: 'tweet', nth: 0 } }] },
+    { stepId: 'read-main', ops: [{ op: 'replace', path: '/target/0', value: { testid: 'post', nth: 0 } }] },
     { stepId: 'rest', op: 'remove' },
   ]);
   assert.equal(template.version, '0.1.1');
-  assert.equal(template.steps[1].maxScrolls, 60);
-  assert.equal(template.steps[3].do.length, 3);
+  assert.equal(template.steps[2].maxScrolls, 60);
+  assert.equal(template.steps[4].do.length, 3);
   assert.equal(template.provenance.repairs.at(-1).steps.length, 3);
   assert.equal(validateTemplate(template).ok, true);
   assert.throws(() => applyPatch(tpl, { stepId: 'nope', op: 'remove' }), /not found/);
 });
 
 test('batch planning: accounts × jobs, csv', () => {
-  assert.deepEqual(parseCsv('id,profile,keyword\na,x.com/a,"hello, world"\nb,,\n'), [
-    { id: 'a', profile: 'x.com/a', keyword: 'hello, world' },
+  assert.deepEqual(parseCsv('id,profile,keyword\na,demo/a,"hello, world"\nb,,\n'), [
+    { id: 'a', profile: 'demo/a', keyword: 'hello, world' },
     { id: 'b', profile: '', keyword: '' },
   ]);
-  const jobs = planJobs({ _site: 'x.com', inputs: { count: 5 }, accounts: [{ id: 'a', inputs: { keyword: 'k1' } }, { id: 'b' }] }, '.');
+  const jobs = planJobs({ _site: 'demo', inputs: { count: 5 }, accounts: [{ id: 'a', inputs: { keyword: 'k1' } }, { id: 'b' }] }, '.');
   assert.equal(jobs.length, 2);
-  assert.equal(jobs[0].account.profile, 'x.com/a');
+  assert.equal(jobs[0].account.profile, 'demo/a');
   assert.deepEqual(jobs[0].inputs, { count: 5, keyword: 'k1' });
-  const j2 = planJobs({ _site: 'x.com', accounts: [{ id: 'a' }], jobs: [{ account: 'a', inputs: { keyword: 1 } }, { account: 'a', inputs: { keyword: 2 } }] }, '.');
+  const j2 = planJobs({ _site: 'demo', accounts: [{ id: 'a' }], jobs: [{ account: 'a', inputs: { keyword: 1 } }, { account: 'a', inputs: { keyword: 2 } }] }, '.');
   assert.deepEqual(j2.map((j) => j.key), ['a#1', 'a#2']);
 });
 

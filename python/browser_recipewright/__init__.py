@@ -1,7 +1,7 @@
 """Thin Python helpers around the browser-recipewright CLI.
 
     from browser_recipewright import run, load_run, to_csv
-    res = run("x.com/search-read-posts", {"keyword": "AI agent", "count": 3})
+    res = run("demo/local-feed", {"keyword": "agent", "count": 3})
     rows = res.output            # list of dicts from output.json
     to_csv(rows, "posts.csv")    # nested values are JSON-encoded
 """
@@ -110,13 +110,14 @@ def list_runs(limit: int = 20, template: str | None = None) -> list[dict]:
     return _call(["runs", "-n", str(limit)] + (["-t", template] if template else []))[1].get("runs", [])
 
 
-def flatten_posts(details: Iterable[dict]) -> list[dict]:
-    """For x.com/search-read-posts output: one row per post with reply texts joined."""
+def flatten_posts(details: Iterable[dict], base: str = "") -> list[dict]:
+    """For feed-style output (post / main / replies, like demo/local-feed): one row per post with reply texts joined.
+    `base` is prepended to relative post URLs, e.g. "http://127.0.0.1:4173"."""
     rows = []
     for d in details:
         post, main, replies = d.get("post") or {}, d.get("main") or {}, d.get("replies") or []
         rows.append({
-            "url": "https://x.com" + post.get("url", ""),
+            "url": base + post.get("url", ""),
             "author": post.get("author"),
             "likes": post.get("likes"),
             "time": main.get("time") or post.get("time"),

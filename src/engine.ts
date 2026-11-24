@@ -659,9 +659,17 @@ export class Runner {
         await page.goto(url, { waitUntil: s.waitUntil || 'domcontentloaded', timeout: Math.max(timeout, 30000) });
         return null;
       }
-      case 'back':
-        await page.goBack({ waitUntil: 'domcontentloaded', timeout: Math.max(timeout, 30000) });
+      case 'back': {
+        // A page restored from the back/forward cache fires no new DOMContentLoaded, so waiting for it can hang
+        // until the timeout even though the browser is already showing the previous page. Wait for the commit,
+        // then give the load state a bounded chance; the step's `expect` decides whether we landed right.
+        const before = page.url();
+        const res = await page.goBack({ waitUntil: 'commit', timeout: Math.max(timeout, 30000) });
+        if (!res && page.url() === before) throw new RpaError('NAVIGATION_FAILED', 'there is no previous page to go back to');
+        // res is null for a cache restore: that page is already loaded, so only wait after a real network load
+        if (res) await page.waitForLoadState('domcontentloaded', { timeout: Math.min(timeout, 5000) }).catch(() => {});
         return null;
+      }
       case 'click': {
         const loc = await resolve(s.target);
         await human.click(page, loc, { humanize: this.humanize, timeout, button: s.button, clickCount: s.clickCount });
