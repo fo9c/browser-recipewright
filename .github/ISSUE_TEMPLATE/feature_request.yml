@@ -1,0 +1,22 @@
+name: ✨ 功能建议 / Feature request
+description: 新动作、新命令、新配方想法、文档改进。
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题 / Problem
+      description: 你想自动化的场景是什么？现在卡在哪？
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你的想法 / Proposal
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 确认 / Confirm
+      options:
+        - label: 这个需求符合[负责任使用说明](https://github.com/fo9c/browser-recipewright/blob/main/docs/responsible-use.md)（不涉及绕过验证码、刷量、群发等）
+          required: true

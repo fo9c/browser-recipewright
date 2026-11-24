@@ -1,0 +1,50 @@
+name: 🐞 Bug 报告 / Bug report
+description: 工具本身出错（安装、命令、执行器）。配方在某个网站跑不通请选「配方失效」。
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢反馈！提交前请删掉输出里的账号名、Cookie、个人数据。
+        Please remove account names, cookies and personal data before posting.
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么 / What happened
+      description: 你做了什么，期望看到什么，实际看到什么。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现命令 / Steps to reproduce
+      render: bash
+      placeholder: browser-recipewright run demo/local-feed -i keyword=agent
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: doctor 输出 / `browser-recipewright doctor` output
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / Version
+      placeholder: "0.1.2（package.json 里的 version，或 git commit）"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 系统 / OS
+      options: [macOS, Windows, Linux]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 其他日志 / Other logs
+      render: text
