@@ -1,7 +1,11 @@
-/** Run records: runs/<id>/run.json + steps.jsonl + output.json + artifacts/ + failure/ */
+/**
+ * Run records: runs/<id>/run.json + events.jsonl + steps.jsonl + output.json + state.json + artifacts/ + failure/
+ * The layout is the public "run data format" (docs/run-data-format.md) that viewer plugins read.
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import { dirs, ensureDir, writeJson, readJson, safeName, timestampId, shortRand, ENV_ERROR_CODES } from './util.js';
+import { RunEvents, RUN_FORMAT, RUN_FORMAT_VERSION, stepOutline } from './events.js';
 
 export interface StepRecord {
   seq: number;
@@ -45,24 +49,52 @@ export const errorCategory = (code: string): 'env' | 'template' => (ENV_ERROR_CO
 
 export class RunRecorder {
   dir: string;
+  runId: string;
   seq = 0;
   meta: any;
+  /** events.jsonl: the stream viewer plugins read (live or afterwards) */
+  events: RunEvents;
   private stepsFile: string;
+  private baseDir: string;
   constructor(templateId: string, baseDir = dirs.runs()) {
-    this.dir = ensureDir(path.join(baseDir, `${timestampId()}_${safeName(templateId.replace(/\//g, '-'))}_${shortRand()}`));
+    this.baseDir = baseDir;
+    this.runId = `${timestampId()}_${safeName(templateId.replace(/\//g, '-'))}_${shortRand()}`;
+    this.dir = ensureDir(path.join(baseDir, this.runId));
     ensureDir(path.join(this.dir, 'artifacts'));
     this.stepsFile = path.join(this.dir, 'steps.jsonl');
     fs.writeFileSync(this.stepsFile, '');
+    this.events = new RunEvents(this.dir);
   }
-  start(meta: any) {
-    this.meta = { ...meta, status: 'running', startedAt: new Date().toISOString(), runDir: this.dir };
+  start(meta: any, steps: any[] = []) {
+    this.meta = { format: { name: RUN_FORMAT, version: RUN_FORMAT_VERSION }, runId: this.runId, ...meta, status: 'running', startedAt: new Date().toISOString(), runDir: this.dir };
     writeJson(path.join(this.dir, 'run.json'), this.meta);
+    const { format, runDir, status, ...rest } = this.meta;
+    this.events.emit('run.start', { ...rest, steps: stepOutline(steps) });
+    this.pointLatest();
+  }
+  /** runs/_latest.json tells a viewer which run is the newest (and whether it is still running) without scanning. */
+  private pointLatest() {
+    try {
+      const m = this.meta;
+      writeJson(path.join(this.baseDir, '_latest.json'), { runId: this.runId, runDir: this.dir, templateId: m.templateId, status: m.status, startedAt: m.startedAt, finishedAt: m.finishedAt ?? null });
+    } catch {}
   }
   nextSeq() {
     return ++this.seq;
   }
   step(rec: StepRecord) {
     fs.appendFileSync(this.stepsFile, JSON.stringify(rec) + '\n');
+    const e: any = { step: rec.seq, path: rec.path, stepId: rec.stepId, action: rec.action, status: rec.status, durationMs: rec.durationMs, attempts: rec.attempts, urlAfter: rec.urlAfter };
+    if (rec.locator?.hit != null) e.locatorHit = rec.locator.hit;
+    if (rec.error) e.error = rec.error;
+    if (rec.note) e.note = rec.note;
+    if (rec.handoffMs) e.handoffMs = rec.handoffMs;
+    if (rec.artifacts?.length) e.artifacts = rec.artifacts;
+    this.events.emit('step.end', e);
+  }
+  /** Record a file saved under the run directory (relative path), e.g. a screenshot or a download. */
+  artifact(relPath: string, kind: string, step?: number) {
+    this.events.emit('artifact', { path: relPath, kind, ...(step != null ? { step } : {}) });
   }
   artifactPath(name: string) {
     return path.join(this.dir, 'artifacts', safeName(name));
@@ -74,6 +106,9 @@ export class RunRecorder {
     this.meta = { ...this.meta, ...update, finishedAt: new Date().toISOString() };
     this.meta.durationMs = Date.parse(this.meta.finishedAt) - Date.parse(this.meta.startedAt);
     writeJson(path.join(this.dir, 'run.json'), this.meta);
+    const m = this.meta;
+    this.events.emit('run.end', { status: m.status, durationMs: m.durationMs, error: m.error ?? null, ...(m.outputCount != null ? { outputCount: m.outputCount } : {}), output: 'output.json' });
+    this.pointLatest();
   }
   writeOutput(output: any) {
     writeJson(path.join(this.dir, 'output.json'), output ?? null);
