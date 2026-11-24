@@ -1,14 +1,37 @@
 name: ci
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: test (node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
       - run: npm ci
       - run: npm run build
-      - run: npm run test:unit
-      - name: e2e (real Chrome, headless)
+      - name: unit tests
+        run: npm run test:unit
+      - name: validate bundled recipes
+        run: npm run validate:templates
+      - name: e2e (real Chrome, headless, offline demo site)
         run: npm run test:e2e
