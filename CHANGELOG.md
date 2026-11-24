@@ -7,7 +7,14 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 
 ## [Unreleased]
 
+### Fixed
+- 用户在运行中动了浏览器窗口也不会出错（#1）：
+  - 窗口最小化、被遮挡或切到后台标签页时，Chrome 保持全速运行（加入防后台节流的启动参数）。
+  - 鼠标移动到目标后、按下前重新测量点击点；目标位置变了就重新瞄准，最多 3 次。
+  - 输入文字前确认焦点在目标输入框，每次按键前焦点被抢走会放回原处。
+
 ### Added
+- 端到端测试：点击中途目标被移走、输入中途焦点被抢走（共 25 个测试）。
 - 仓库维护文件：CHANGELOG、CONTRIBUTING、SECURITY、负责任使用说明、Issue / PR 模板、Dependabot。
 - CI：Node 20 / 22 矩阵、内置模板静态校验、手动触发。
 
