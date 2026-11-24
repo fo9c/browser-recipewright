@@ -6,6 +6,7 @@
 |---|---|---|
 | [`batch.x.json`](batch.x.json) | 多账号批量：两个 X 账号各搜一个关键词，每次间隔 1–2 分钟，每账号每天最多 3 次，登录失效就跳过 | `browser-recipewright batch examples/batch.x.json` |
 | [`accounts.csv`](accounts.csv) | 用表格写账号清单（`id, profile, 每账号参数…`），适合账号多的时候 | 见 [批量说明](../skills/browser-recipewright/references/batch.md) |
+| [`viewer-plugin-minimal/`](viewer-plugin-minimal/) | 最小可视化插件：只读运行数据（`events.jsonl`），在终端显示时间线；演示插件与执行器完全分离 | `node examples/viewer-plugin-minimal/viewer.mjs` |
 | [`patch.example.json`](patch.example.json) | 按步骤 id 打补丁：网站把帖子容器改名后，只替换 `collect-posts` 这一步的定位器 | `browser-recipewright patch x.com/search-read-posts examples/patch.example.json` 先看 diff，确认后加 `--write` |
 
 ## 内置配方 / Bundled recipes
