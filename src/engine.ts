@@ -602,16 +602,26 @@ export class Runner {
         const loc = await resolve(s.target);
         if (this.humanize) {
           await human.click(page, loc, { humanize: true, timeout });
-          await human.selectAllAndDelete(page);
-          await human.typeText(page, String(s.value), undefined, true);
+          const guard = await human.focusForTyping(page, loc, { humanize: true, timeout });
+          try {
+            await human.selectAllAndDelete(page, guard);
+            await human.typeText(page, String(s.value), undefined, true, guard);
+          } finally {
+            await guard.dispose();
+          }
         } else await loc.fill(String(s.value), { timeout });
         return null;
       }
       case 'type': {
         const loc = await resolve(s.target);
         await human.click(page, loc, { humanize: this.humanize, timeout });
-        if (s.clear) await human.selectAllAndDelete(page);
-        await human.typeText(page, String(s.text), s.delayMs, this.humanize);
+        const guard = await human.focusForTyping(page, loc, { humanize: this.humanize, timeout });
+        try {
+          if (s.clear) await human.selectAllAndDelete(page, guard);
+          await human.typeText(page, String(s.text), s.delayMs, this.humanize, guard);
+        } finally {
+          await guard.dispose();
+        }
         return null;
       }
       case 'press': {

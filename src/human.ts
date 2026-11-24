@@ -1,5 +1,5 @@
 /** Humanized input on top of CDP trusted events: curved mouse paths, jittered timing, chunked wheel scrolling. */
-import type { Page, Locator } from 'patchright';
+import type { Page, Locator, JSHandle } from 'patchright';
 import { sleep, randInt, log } from './util.js';
 
 const mousePos = new WeakMap<Page, { x: number; y: number }>();
@@ -95,6 +95,89 @@ export async function click(page: Page, locator: Locator, opts: { humanize: bool
   await locator.click({ timeout: opts.timeout, button: opts.button, clickCount: opts.clickCount });
 }
 
+// ---------- keyboard focus ----------
+
+/**
+ * Runs inside the page: the element that should receive the keystrokes, or null.
+ * Accepts the focused element when it is the target or inside it; when the target itself is not
+ * editable (e.g. a fake search box that opens a real input when clicked), accepts any focused editable.
+ */
+const TYPING_TARGET = (el: any) => {
+  let a = el.ownerDocument.activeElement;
+  while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+  const editable = (x: any) =>
+    !!x && (x.isContentEditable || x.tagName === 'TEXTAREA' ||
+      (x.tagName === 'INPUT' && !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'range', 'color', 'hidden'].includes((x.type || '').toLowerCase())));
+  if (!a || a === el.ownerDocument.body) return null;
+  for (let n = a; n; n = n.parentNode || n.host) if (n === el) return a;
+  if (!editable(el) && editable(a)) return a;
+  return null;
+};
+
+/** Runs inside the page: is `el` still focused? If not, focus it again and put the caret at the end. */
+const KEEP_FOCUS = (el: any) => {
+  let a = el.ownerDocument.activeElement;
+  while (a && a.shadowRoot && a.shadowRoot.activeElement) a = a.shadowRoot.activeElement;
+  if (a === el) return true;
+  el.focus();
+  try {
+    if (typeof el.value === 'string' && typeof el.setSelectionRange === 'function') el.setSelectionRange(el.value.length, el.value.length);
+    else if (el.isContentEditable) {
+      const sel = el.ownerDocument.getSelection();
+      const range = el.ownerDocument.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  } catch {}
+  return false;
+};
+
+export interface FocusGuard {
+  /** Call before each keystroke: puts the focus back if the user (or the page) moved it away. */
+  check(): Promise<void>;
+  dispose(): Promise<void>;
+}
+
+/**
+ * After clicking an input, make sure the keyboard focus really is there before typing, and keep it
+ * there while typing. If the user clicks somewhere else in the page meanwhile, keystrokes would
+ * otherwise land in the wrong field.
+ */
+export async function focusForTyping(page: Page, locator: Locator, opts: { humanize: boolean; timeout: number }): Promise<FocusGuard> {
+  const noop: FocusGuard = { check: async () => {}, dispose: async () => {} };
+  const find = async () => {
+    const h = (await (locator as any).evaluateHandle(TYPING_TARGET, undefined, undefined, true).catch(() => null)) as JSHandle | null;
+    if (h && h.asElement()) return h;
+    await h?.dispose().catch(() => {});
+    return null;
+  };
+  let h = await find();
+  if (!h) {
+    log.info('    ↺ the input is not focused (did something take the focus?); clicking it again');
+    await click(page, locator, opts).catch(() => {});
+    h = await find();
+  }
+  if (!h) {
+    await locator.focus({ timeout: opts.timeout }).catch(() => {});
+    h = await find();
+  }
+  if (!h) return noop; // focus went somewhere we cannot see (e.g. an editor in another frame): type as before
+  const handle = h;
+  let warned = false;
+  return {
+    async check() {
+      const ok = await (handle as any).evaluate(KEEP_FOCUS, undefined, undefined, true).catch(() => true);
+      if (!ok && !warned) {
+        warned = true;
+        log.info('    ↺ the input lost focus while typing (a click elsewhere?); focus restored, typing continues');
+      }
+    },
+    dispose: () => handle.dispose().catch(() => {}),
+  };
+}
+
 export async function hover(page: Page, locator: Locator, opts: { humanize: boolean; timeout: number }) {
   if (!opts.humanize) return locator.hover({ timeout: opts.timeout });
   await locator.hover({ trial: true, timeout: opts.timeout });
@@ -102,13 +185,15 @@ export async function hover(page: Page, locator: Locator, opts: { humanize: bool
   if (pt) await moveMouse(page, pt.x, pt.y);
 }
 
-export async function typeText(page: Page, text: string, delay: number | [number, number] | undefined, humanize: boolean) {
+export async function typeText(page: Page, text: string, delay: number | [number, number] | undefined, humanize: boolean, guard?: FocusGuard) {
   if (!humanize && delay === undefined) {
+    await guard?.check();
     await page.keyboard.insertText(text);
     return;
   }
   const [lo, hi] = Array.isArray(delay) ? delay : delay !== undefined ? [delay, delay] : [45, 140];
   for (const ch of text) {
+    await guard?.check();
     await page.keyboard.type(ch);
     let d = randInt(lo, hi);
     if (humanize && Math.random() < 0.06) d += randInt(150, 450); // occasional thinking pause
@@ -116,7 +201,8 @@ export async function typeText(page: Page, text: string, delay: number | [number
   }
 }
 
-export async function selectAllAndDelete(page: Page) {
+export async function selectAllAndDelete(page: Page, guard?: FocusGuard) {
+  await guard?.check();
   const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
   await page.keyboard.press(`${mod}+A`);
   await sleep(randInt(30, 90));
