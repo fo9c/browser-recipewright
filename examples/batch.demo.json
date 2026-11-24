@@ -1,0 +1,13 @@
+{
+  "name": "demo-two-accounts",
+  "template": "demo/local-feed",
+  "inputs": { "count": 3, "minLikes": 100, "maxComments": 5 },
+  "accounts": [
+    { "id": "main", "profile": "demo/main", "inputs": { "keyword": "agent" } },
+    { "id": "work", "profile": "demo/work", "inputs": { "keyword": "workflow" } }
+  ],
+  "spacingMs": [3000, 6000],
+  "dailyCapPerAccount": 3,
+  "onLoginRequired": "skip",
+  "onChallenge": "stop"
+}
