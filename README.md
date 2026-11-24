@@ -135,6 +135,7 @@ ln -s "$(pwd)/skills/browser-recipewright" ~/.claude/skills/browser-recipewright
 - [多账号批量](skills/browser-recipewright/references/batch.md)
 - [Skill 说明（给 AI 看的）](skills/browser-recipewright/SKILL.md)
 - [架构说明](docs/architecture.md)
+- [负责任使用说明](docs/responsible-use.md) · [参与贡献](CONTRIBUTING.md) · [维护手册](docs/MAINTAINING.md) · [更新日志](CHANGELOG.md)
 - Python 小工具：[`python/`](python/README.md)
 
 ## 目录结构
