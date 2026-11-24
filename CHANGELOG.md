@@ -7,7 +7,16 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 
 ## [Unreleased]
 
+### Added
+- `browser-recipewright selfcheck`：在自带的本地测试页上用内置配方 `selfcheck/basic` 跑一遍所有核心浏览器操作（输入、选择、勾选、点击、按键、等待、悬停、滚动提取、跳转、返回），并检查输入是否可信、拟人。每项一行通过 / 失败。
+
+### Changed
+- 不再内置任何真实网站的配方；`templates/` 只保留针对本地测试页的 `selfcheck/basic` 和 `demo/local-feed`。示例、文档和 Skill 里的站点一律改用 example.com 或本地演示站。
+- 离线演示站改用中性的 test id（`post`、`post-text`、`author`、`account-menu` 等）。
+- Python `flatten_posts` 不再写死域名，新增 `base` 参数。
+
 ### Fixed
+- `back` 返回到浏览器缓存（back/forward cache）里的页面时不再白等 30 秒超时。
 - 用户在运行中动了浏览器窗口也不会出错（#1）：
   - 窗口最小化、被遮挡或切到后台标签页时，Chrome 保持全速运行（加入防后台节流的启动参数）。
   - 鼠标移动到目标后、按下前重新测量点击点；目标位置变了就重新瞄准，最多 3 次。
@@ -55,7 +64,7 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 - 运行记录（run.json、steps.jsonl、state.json、output.json）和失败现场档案。
 - 登录 / 验证码交给人处理；按步骤 id 打补丁（带 diff、版本号 +1）；`--resume` 续跑。
 - 多账号批量：间隔、每日上限、跳过登录失效账号、续跑。
-- 内置模板：`x.com/search-read-posts`、`demo/local-feed` + 离线演示站。
+- 内置模板 `demo/local-feed` + 离线演示站。
 - Skill、中文 README + Mac 上手指南、Python 小工具、单元 + 端到端测试、CI。
 
 [Unreleased]: https://github.com/fo9c/browser-recipewright/compare/v0.1.2...HEAD
