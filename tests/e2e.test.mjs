@@ -68,6 +68,16 @@ test('login via snapshot + act, then full run succeeds with records', { skip }, 
   const steps = fs.readFileSync(path.join(r.json.runDir, 'steps.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
   assert.ok(steps.find((s) => s.stepId === 'collect-posts' && s.locator.hit === 0));
   assert.ok(steps.find((s) => s.path === 'read-each[2].collect-replies'));
+  // run data format v1: events.jsonl is complete and valid, so a viewer plugin can replay the run
+  const chk = await cli('check-run', r.json.runDir);
+  assert.equal(chk.json.status, 'ok', chk.stderr);
+  assert.equal(chk.json.finished, true);
+  const ev = await cli('events');
+  const types = ev.stdout.trim().split('\n').map((l) => JSON.parse(l).type);
+  assert.equal(types[0], 'run.start');
+  assert.equal(types.at(-1), 'run.end');
+  for (const t of ['step.start', 'step.end', 'loop.iteration', 'data', 'page.navigated', 'pointer.move']) assert.ok(types.includes(t), t);
+  assert.equal(types.filter((t) => t === 'step.start').length, types.filter((t) => t === 'step.end').length);
 });
 
 test('pagination merge: appendTo + dedupe, forEach.flatten; act collect shows items', { skip }, async () => {

@@ -32,7 +32,7 @@ Every step is recorded, and when a site changes only the failed step is repaired
 | X keyword search, read 5 posts + comments | **20 / 20** consecutive runs on a real account, no captcha (2026-11-23) |
 | Browser fingerprint self-check (bot.sannysoft.com) | all checks pass |
 | Boss Zhipin: read 30 job posts by city/industry, pick 3 (read-only) | passed (2026-11-24) |
-| Automated tests | 13 unit + 12 end-to-end (real Chrome + offline demo site) on every CI run |
+| Automated tests | 15 unit + 12 end-to-end (real Chrome + offline demo site) on every CI run |
 
 Measured in personal-automation use; this is not a claim that any site "cannot detect" it. See [responsible use](docs/responsible-use.md).
 
@@ -69,7 +69,7 @@ browser-recipewright run x.com/search-read-posts -i keyword="AI agent"
 
 Claude Code: `ln -s "$(pwd)/skills/browser-recipewright" ~/.claude/skills/browser-recipewright`, then ask in plain language.
 
-Docs: [template format](skills/browser-recipewright/references/template-format.md) · [batch](skills/browser-recipewright/references/batch.md) · [skill](skills/browser-recipewright/SKILL.md) · [architecture](docs/architecture.md)
+Docs: [template format](skills/browser-recipewright/references/template-format.md) · [batch](skills/browser-recipewright/references/batch.md) · [skill](skills/browser-recipewright/SKILL.md) · [architecture](docs/architecture.md) · [run data format for viewer plugins](docs/run-data-format.md)
 
 ## Roadmap
 
