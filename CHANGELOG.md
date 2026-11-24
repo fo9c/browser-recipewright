@@ -14,7 +14,11 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
   - 输入文字前确认焦点在目标输入框，每次按键前焦点被抢走会放回原处。
 
 ### Added
-- 端到端测试：点击中途目标被移走、输入中途焦点被抢走（共 25 个测试）。
+- **运行数据标准 v1**（`recipewright.run/1`）：每次运行都会写 `events.jsonl` 事件流（步骤开始/结束/重试、循环进度、提取的数据、页面跳转、鼠标轨迹、人工接管等），`run.json` 带 `format` 版本号，`runs/_latest.json` 指向最新一次运行。可视化界面改为单独下载的只读插件，读这些文件即可，执行器不捆绑任何界面。见 [docs/run-data-format.md](docs/run-data-format.md)、[入门版](docs/viewer-plugins.zh.md)。
+  Run data format v1: every run writes an `events.jsonl` stream for read-only viewer plugins; nothing is bundled.
+- 新命令：`events [runDir] [-f]`（输出/跟随事件流）、`check-run [runDir]`（校验运行数据）、`schema --run-events`（事件 JSON Schema，`schema/run-events.v1.json`）。
+- 示例插件 [examples/viewer-plugin-minimal](examples/viewer-plugin-minimal)：零依赖，终端里显示运行时间线。
+- 端到端测试：点击中途目标被移走、输入中途焦点被抢走；运行数据格式校验（共 27 个测试）。
 - 仓库维护文件：CHANGELOG、CONTRIBUTING、SECURITY、负责任使用说明、Issue / PR 模板、Dependabot。
 - CI：Node 20 / 22 矩阵、内置模板静态校验、手动触发。
 

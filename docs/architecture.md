@@ -15,7 +15,8 @@ src/cli.ts                       commands; JSON on stdout, progress on stderr, e
         │     ├── conditions.ts  structured conditions
         │     ├── render.ts      {{ }} references + filters
         │     ├── scripts.ts     runScript whitelist (sha256 + domains)
-        │     └── records.ts     runs/<id>/ run.json, steps.jsonl, state.json, output.json, failure/dossier.json
+        │     ├── records.ts     runs/<id>/ run.json, steps.jsonl, state.json, output.json, failure/dossier.json
+        │     └── events.ts      runs/<id>/events.jsonl: the run data format viewer plugins read (docs/run-data-format.md)
         ├── browser.ts           find system Chrome, spawn with clean flags + own user-data-dir, connectOverCDP, sessions
         ├── heal.ts              step-scoped patches, diff, version bump, .history
         └── batch.ts             accounts × jobs, spacing, daily caps, login skip, results.jsonl, resume
@@ -33,6 +34,9 @@ src/cli.ts                       commands; JSON on stdout, progress on stderr, e
   and can be pasted straight into templates.
 - **Records first**: every step is appended to `steps.jsonl` as it finishes; `state.json` after each top-level step
   makes `--resume` possible; failures write a dossier aimed at an AI reader.
+- **Viewers are plugins, not part of the executor**: every run writes `events.jsonl` (run data format v1, see
+  [run-data-format.md](run-data-format.md)); any visualization is a separate, read-only program that reads it,
+  live or afterwards. Writing events never throws and never changes timing.
 - **Environment vs template errors** decide who acts: env → human (handoff / skip account), template → AI patch.
 
 ## Roadmap (not in v0.1)

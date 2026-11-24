@@ -37,7 +37,7 @@ AI 探索一次网页，写下一份可复用的「配方」；之后真实 Chro
 | X（推特）关键词搜索 → 读 5 条帖子 + 评论 | 真实账号连续 **20 / 20 次成功**，未触发验证码（2026-11-23） |
 | 浏览器指纹自检（bot.sannysoft.com） | 各项检查通过 |
 | Boss直聘：按城市 / 行业读 30 个职位，筛出 3 个（只读） | 一次跑通（2026-11-24） |
-| 自动化测试 | 单元 13 + 端到端 12（真实 Chrome + 离线演示站），每次提交在 CI 上跑 |
+| 自动化测试 | 单元 15 + 端到端 12（真实 Chrome + 离线演示站），每次提交在 CI 上跑 |
 
 > 以上是个人自动化场景下的实测，不代表任何网站"无法检测"。请遵守[负责任使用说明](docs/responsible-use.md)。
 
@@ -135,6 +135,7 @@ ln -s "$(pwd)/skills/browser-recipewright" ~/.claude/skills/browser-recipewright
 - [多账号批量](skills/browser-recipewright/references/batch.md)
 - [Skill 说明（给 AI 看的）](skills/browser-recipewright/SKILL.md)
 - [架构说明](docs/architecture.md)
+- [可视化插件与运行数据标准](docs/viewer-plugins.zh.md)（[规范](docs/run-data-format.md)）
 - [负责任使用说明](docs/responsible-use.md) · [参与贡献](CONTRIBUTING.md) · [维护手册](docs/MAINTAINING.md) · [更新日志](CHANGELOG.md)
 - Python 小工具：[`python/`](python/README.md)
 
