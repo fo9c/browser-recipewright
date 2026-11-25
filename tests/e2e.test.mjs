@@ -359,3 +359,36 @@ test('flows: recipe steps call fragments in one browser and one record, with bre
   const types = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).type);
   assert.equal(types.filter((t) => t === 'recipe.enter').length, 4); // collect, visit, visit again after the pause, again
 });
+
+test('tasks: act / run / notes go into one journal; task draft turns them into a flow that runs', { skip }, async () => {
+  assert.equal((await cli('task', 'start', 'e2e-task', '--gap', '100-200')).json.status, 'ok');
+  try {
+    await cli('launch', '--headless', '-p', 'test/task');
+    assert.equal((await cli('act', 'goto', '--url', `${srv.url}/selfcheck.html`, '-p', 'test/task')).json.status, 'success');
+    assert.equal((await cli('act', 'type', '--target', '[{"testid":"sc-search"},{"placeholder":"输入后按回车"}]', '--text', 'self check', '-p', 'test/task')).json.status, 'success');
+    assert.equal((await cli('task', 'note', 'rows 2 and 4 look relevant')).json.status, 'ok');
+    const run = await cli('run', path.join(ROOT, 'tests', 'fragments', 'sc-collect.json'), '-i', `base=${srv.url}`, '-i', 'count=3', '-p', 'test/task');
+    assert.equal(run.json.status, 'success', run.stderr);
+    const show = await cli('task', 'show');
+    assert.deepEqual(show.json.entries.map((e) => e.type), ['act', 'act', 'decision', 'run']);
+    assert.ok(show.json.entries[3].runDir);
+    const d = await cli('task', 'draft', '--param', 'q=self check', '--param', `base=${srv.url}`, '-o', path.join(HOME, 'draft.json'));
+    assert.equal(d.json.status, 'ok', d.stderr);
+    assert.equal(d.json.kind, 'flow');
+    const draft = JSON.parse(fs.readFileSync(path.join(HOME, 'draft.json'), 'utf8'));
+    assert.deepEqual(draft.steps.map((s) => s.action), ['goto', 'type', 'ask', 'recipe']);
+    assert.equal(draft.steps[1].text, '{{inputs.q}}');
+    assert.equal(draft.steps[0].url, '{{inputs.base}}/selfcheck.html');
+    assert.equal(draft.steps[3].inputs.base, '{{inputs.base}}');
+    assert.equal(draft.provenance.fromTask, 'e2e-task');
+    // the draft runs: it stops at the decision you made by hand, and goes on with your answer
+    const r = await cli('run', path.join(HOME, 'draft.json'), '-p', 'test/task');
+    assert.equal(r.code, 4, r.stderr);
+    assert.equal(r.json.ask.question, 'rows 2 and 4 look relevant');
+    const a = await cli('answer', r.json.runDir, '--value', 'ok');
+    assert.equal(a.json.status, 'success', a.stderr);
+  } finally {
+    await cli('task', 'end');
+    await cli('close', '-p', 'test/task');
+  }
+});
