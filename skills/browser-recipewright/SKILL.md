@@ -10,7 +10,7 @@ You drive websites through the `browser-recipewright` CLI. Do not click around a
 Templates are deterministic, cheap to replay, and a human can review them.
 
 All commands print a JSON result on stdout and progress on stderr. Exit codes:
-`0` ok · `1` template/step problem (you may fix it) · `2` invalid input/template · `3` environment problem (login, captcha, browser — hand to the human, do not edit the template).
+`0` ok · `1` template/step problem (you may fix it) · `2` invalid input/template · `3` environment problem (login, captcha, browser — hand to the human, do not edit the template) · `4` paused at a breakpoint: **you** must decide and `answer` (section 4b).
 
 If `browser-recipewright` is not on PATH, use `npx browser-recipewright` (or `node <repo>/bin/browser-recipewright.js`). Run `browser-recipewright doctor` once if anything looks broken, and `browser-recipewright selfcheck` to confirm clicks, typing, scrolling and extraction work on this machine (local test page, no network).
 
@@ -90,6 +90,31 @@ browser-recipewright run ./my-template.json --inputs '{"keyword":"rpa"}' --keep-
 - A window opens (the human can watch). If login or a captcha is needed, the run pauses and asks the human in the terminal, then continues by itself. In unattended runs pass `--no-handoff` and treat exit code 3 as "tell the human".
 - Result JSON: `status`, `runDir`, `output` (path to output.json), `preview`, `error`, `dossier`.
 - Save good templates: `browser-recipewright save ./my-template.json` (goes to `~/.browser-recipewright/templates`).
+
+## 4b. Breakpoints: the recipe asks you to decide
+
+A recipe can stop in the middle with an `ask` step when something needs judgment, not a rule: which posts are
+really relevant, is this reply spam, which of these buttons is the right one. The executor never calls a model;
+it hands the question to you. Exit code `4`, and the result looks like:
+
+```json
+{ "status": "paused", "runDir": "…", "ask": { "step": "pick-relevant", "question": "Which posts are about AI agents?",
+  "answer": { "type": "pick", "max": 10 }, "data": [ { "#": 0, "title": "…" }, { "#": 1, "title": "…" } ], "next": "browser-recipewright answer … --value '<JSON>'" } }
+```
+
+Read `data`, decide yourself, and answer in the given format; the browser is still on that page and the same run
+continues from that step (also inside loops), in the same run directory:
+
+```bash
+browser-recipewright answer <runDir> --value '[0, 3, 7]'   # pick: item numbers from 0 → the picked items are saved
+browser-recipewright answer <runDir> --value true          # boolean · "more" for choice · 5 for number · JSON for json
+browser-recipewright pending                               # every run waiting for an answer (after a restart, too)
+```
+- A wrong format is refused (`ANSWER_INVALID`, exit 2) and the run stays paused: answer again.
+- The answer may lead to another pause (exit 4 again): keep answering until `success` / `failed`.
+- Unattended runs (`batch`, `run --on-ask default`) use the step's `default`; give every `ask` a sensible one.
+- When writing a recipe, put an `ask` where you would otherwise need to stop the recipe and look at the data
+  yourself. Ask once with the whole list (`pick`) instead of once per item. See `references/template-format.md`.
 
 ## 5. When a run fails: repair ONE step
 

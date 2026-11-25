@@ -43,6 +43,7 @@ Names starting with `_` inside `runs/` are not runs.
 | `artifacts/` | when saved | Screenshots (`screenshots: "every"` or `screenshot: true` on a step), downloads. Announced by `artifact` events. |
 | `failure/` | on failure | `dossier.json` (aimed at an AI repairing the recipe), `screenshot.png`, `snapshot.txt`, `snapshot.refs.json`. |
 | `HANDOFF.json` | only while waiting for a human | Present = the run is paused for a person. |
+| `ask.json` | only while paused at a breakpoint | Present = the run stopped at an `ask` step and waits for the **agent's** answer: `question`, `answer` (format), `data`, `path`, `url`, `since`. Removed when the run continues. |
 
 ### `run.json`
 
@@ -68,7 +69,10 @@ Names starting with `_` inside `runs/` are not runs.
 }
 ```
 
-`status`: `running` → `success` | `failed`. A run with `running` and no new events for a long time was killed.
+`status`: `running` → `success` | `failed`, or `running` → `paused` → `running` → … when the run stops at
+breakpoints (`ask` steps) and the agent answers. A paused run also has `pausedAt` and `pause: { reason, path,
+stepId, question }`; each continuation adds 1 to `resumes`. A run with `running` and no new events for a long
+time was killed.
 Inputs marked `secret` in the recipe are stored as `"***"`. Runs from before v1 have no `format` field: read
 `steps.jsonl` instead.
 
@@ -97,7 +101,7 @@ The rest of the fields depend on `type` and sit next to the envelope (no nesting
 | `run.start` | `runId`✱ `templateId`✱ `templateVersion`✱ `steps`✱ `templatePath` `profile` `account` `inputs` `resumedFrom` `options` `startedAt` | First line. `steps` is the recipe outline (below), so a viewer can draw every step before it runs. |
 | `run.end` | `status`✱ (`success`/`failed`) `durationMs`✱ `error` `outputCount` `output` | Last line. `output.json` is already written. |
 | `step.start` | `step`✱ `path`✱ `stepId`✱ `action`✱ `url` `description` | A step begins. `step` is the step's number in this run; `step.end` carries the same number. |
-| `step.end` | `step`✱ `path`✱ `stepId`✱ `action`✱ `status`✱ `durationMs`✱ `attempts` `urlAfter` `locatorHit` `error` `note` `handoffMs` `artifacts` | A step finished. `status`: `ok` / `failed` / `soft-failed` (optional step failed, run goes on) / `skipped`. `locatorHit` > 0 = a fallback locator was needed (early sign the site changed). The full record is the line with the same `seq` in `steps.jsonl`. |
+| `step.end` | `step`✱ `path`✱ `stepId`✱ `action`✱ `status`✱ `durationMs`✱ `attempts` `urlAfter` `locatorHit` `error` `note` `handoffMs` `artifacts` | A step finished. `status`: `ok` / `failed` / `soft-failed` (optional step failed, run goes on) / `skipped` / `paused` (an `ask` step, or a control step around it, stopped for the agent; after `run.resume` the same path starts again with a new `step` number). `locatorHit` > 0 = a fallback locator was needed (early sign the site changed). The full record is the line with the same `seq` in `steps.jsonl`. |
 | `step.retry` | `step`✱ `path`✱ `attempt`✱ `error`✱ | A step failed and is about to be tried again. |
 | `loop.iteration` | `path`✱ `index`✱ `total` `max` `item` | A `forEach` / `while` loop begins item `index` (0-based). `total` for `forEach`, `max` for `while`; `item` is a short preview of the forEach item. |
 | `data` | `path`✱ `mode`✱ `added`✱ `step` `var` `total` `duplicates` `preview` | A step stored extracted data. `mode`: `save` (`saveAs`), `append` (`appendTo`; `total` = list length after, `duplicates` = skipped by `dedupeBy`), `collect`. `preview` = up to 3 items, each cut to ~400 characters; the full data is in `output.json`. |
@@ -110,6 +114,10 @@ The rest of the fields depend on `type` and sit next to the envelope (no nesting
 | `handoff.start` | `reason`✱ `code`✱ `timeoutMs` | The run paused and is waiting for a person (login, captcha, `handoff` step). |
 | `handoff.end` | `waitedMs`✱ `resolved`✱ `code` | The person finished (`resolved: true`) or the wait gave up. |
 | `artifact` | `path`✱ `kind`✱ `step` | A file was saved; `path` is relative to the run folder. `kind`: `screenshot`, `download`, `failure-screenshot`, `dossier`. |
+| `ask.start` | `step`✱ `path`✱ `stepId`✱ `question`✱ `answerType`✱ `options` `items` `data` `hasDefault` | A breakpoint: the recipe asks the agent to decide. `answerType`: `text` `number` `boolean` `choice` `pick` `json`. `items` = length of the list to pick from; `data` = short preview. Followed by `step.end` with `status: "paused"` and `run.pause`, unless an answer was already there. |
+| `ask.answered` | `step`✱ `path`✱ `stepId`✱ `source`✱ `value` `picked` `waitedMs` | The question got its answer. `source`: `agent` (via `answer`) or `default` (unattended run). `value` = preview of the stored answer; `picked` = the item numbers of a `pick` answer; `waitedMs` = time since `ask.start`. **This is "the AI decided here"** in a timeline. |
+| `run.pause` | `path`✱ `stepId`✱ `reason`✱ (`ask`) `ask` | The run stopped at a breakpoint. Last line for now; the browser stays on the page. |
+| `run.resume` | `path`✱ `stepId` `pausedMs` | The agent answered; the same file continues from here (`seq` and `ms` carry on). |
 
 Coordinates are CSS pixels relative to the top-left of the page viewport. `pointer.*` and `key.type` come from
 the human-like input layer, so they are present when `humanize` is on (the default); with `humanize: false`
@@ -146,7 +154,9 @@ grouped by the recipe key they come from (`steps`, `do`, `then`, `else`).
 3. Read `events.jsonl` from the start. To follow a live run, remember the byte offset you read up to and read
    again when the file grows (poll every 100–500 ms, or use a file watcher).
 4. **A last line without a trailing `\n` is still being written**: keep it and wait for the rest.
-5. Stop at `run.end`. If it never comes and `run.json` no longer says `running`, the process was killed.
+5. Stop at `run.end`. At `run.pause` the run waits for the agent: keep following if you want to show the rest
+   (a `run.resume` line will come), or stop and show "waiting for the AI". If neither comes and `run.json` no
+   longer says `running` or `paused`, the process was killed.
 
 Without writing any code:
 
@@ -173,6 +183,8 @@ A complete, dependency-free example plugin: [examples/viewer-plugin-minimal](../
 | --- | --- | --- |
 | `RunEvents` (append-only writer, never throws) | `src/events.ts` | envelope, `seq`, `ms` |
 | `RunRecorder.start / step / artifact / finish` | `src/records.ts` | `run.start`, `step.end`, `artifact`, `run.end`, `_latest.json` |
+| `RunRecorder.pause / resume` | `src/records.ts` | `run.pause`, `run.resume` |
+| `Runner.execAsk` | `src/engine.ts` | `ask.start`, `ask.answered` |
 | `Runner.execStep / control / handoff` | `src/engine.ts` | `step.start`, `step.retry`, `loop.iteration`, `data`, `handoff.*` |
 | `Runner.watchPage` | `src/engine.ts` | `page.navigated`, `page.viewport`, bridges the input observer |
 | `observeInput(page, observer)` | `src/human.ts` | `pointer.*`, `key.type` |

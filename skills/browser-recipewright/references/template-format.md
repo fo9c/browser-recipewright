@@ -40,7 +40,7 @@ A list of candidates tried in order; the first that matches **exactly one visibl
 
 Modifiers on any candidate: `nth` (0-based, `-1` = last), `within` (a target to search inside), `visible` (default `true`), `frame` (CSS of an iframe), `exact`.
 
-## Actions (20 atomic + 4 control flow)
+## Actions (21 atomic + 4 control flow)
 
 | action | parameters | result (`saveAs`) |
 |---|---|---|
@@ -64,6 +64,7 @@ Modifiers on any candidate: `nth` (0-based, `-1` = last), `within` (a target to 
 | `runScript` | `script` (whitelisted name), `args` | script return value |
 | `assert` | `that` (condition), `code` (error code, default `ASSERT_FAILED`), `message` | true |
 | `handoff` | `reason`, `until` (condition) | – |
+| `ask` | `question`, `data`, `answer` (`{type, options, min, max, schema, hint}`), `default` | the answer (see Breakpoints) |
 | `if` | `when`, `then`, `else` | – |
 | `forEach` | `in`, `as`, `do`, `max` (required), `continueOnError`, `collectFrom`, `flatten` | array built from `collectFrom`; with `flatten: true`, per-iteration arrays are joined into one list |
 | `while` | `when`, `do`, `maxIterations` (required) | – |
@@ -83,6 +84,34 @@ All clicks and typing are trusted CDP input events. With `humanize` the mouse mo
 
 Scroll-and-extract loop for infinite feeds: extract visible items → dedupe by `dedupeBy` → skip the first `offset` unique items → keep those passing `filter` (`{{item.x}}`) → stop when `limit` reached, `until` is true (`{{self}}` = kept list), the list ends (no new items `stopAfterNoNew` times at the bottom) or `maxScrolls`. The record shows `kept, scanned, filteredOut, dropped, scrolls, stoppedBecause`.
 
+### Breakpoints (`ask`)
+
+`ask` stops the recipe and hands a decision to **you, the agent** (the executor never calls a model). The browser
+stays on the page; the run ends with `status: "paused"`, exit code `4`, and prints `ask: {question, answer, data, next}`.
+Decide, then `browser-recipewright answer <runDir> --value '<JSON>'`: the same run continues from that exact step,
+also inside loops.
+
+```json
+{ "id": "pick-relevant", "action": "ask",
+  "question": "Which of these posts are really about {{inputs.topic}}?",
+  "data": "{{vars.posts}}", "answer": { "type": "pick", "max": 10 }, "default": [], "saveAs": "relevant" }
+```
+
+| `answer.type` | answer you give | stored in `saveAs` |
+|---|---|---|
+| `text` (default) | any text | the text |
+| `number` | `3` | number |
+| `boolean` | `true` / `false` (`yes`/`no` ok) | boolean |
+| `choice` | one of `answer.options` | that option |
+| `pick` | item numbers from 0, e.g. `[0, 3]` (`min`/`max` limit the count) | **the picked items** of `data` |
+| `json` | any JSON, checked against `answer.schema` | the JSON |
+
+- Ask **once with the whole list** (`pick` over 30 posts) rather than once per item: one pause instead of 30.
+- `default` is used by unattended runs (`batch`, `selfcheck`, `run --on-ask default`). It may be a reference.
+  Without a default those runs fail with `ASK_UNANSWERED`.
+- Use rules (`filter`, `if`) when the decision is mechanical (likes > 100); use `ask` when it needs judgment
+  (is this relevant / spam / worth replying to / which button is right).
+
 ## References and conditions
 
 `{{inputs.k}}`, `{{vars.k}}`, `{{account.id}}`, loop variable (`{{post.url}}`), `{{index}}` inside forEach, `{{item.k}}`/`{{self}}` in collect. A string that is exactly one reference keeps its type (array, number). Filters: `| urlencode | trim | number | lower | upper | length | json | flatten | compact` (`flatten` joins a list of lists one level deep; `compact` drops null items).
@@ -96,8 +125,9 @@ Conditions (one key each): `exists`/`notExists`/`visible`/`hidden` (target), `ur
 ```
 run.json        template, version, profile, inputs (secrets masked), status, error, duration
 steps.jsonl     one line per executed step (loop steps once per round): seq, stepId, path (read-each[2].open-post),
-                action, status (ok/failed/soft-failed), durationMs, urlBefore/After, locator {tried, hit}, expect, attempts, output, error
-state.json      variables after the last finished top-level step (used by --resume)
+                action, status (ok/failed/soft-failed/paused), durationMs, urlBefore/After, locator {tried, hit}, expect, attempts, output, error
+state.json      variables after the last finished top-level step (used by --resume), answers given to ask steps
+ask.json        only while paused at an ask step: question, answer format, data
 output.json     final result
 artifacts/      screenshots, downloads
 failure/        dossier.json, screenshot.png, snapshot.txt, snapshot.refs.json   (only when failed)
@@ -118,6 +148,8 @@ failure/        dossier.json, screenshot.png, snapshot.txt, snapshot.refs.json  
 | `OUTPUT_INVALID` | template | fix field extraction |
 | `SCRIPT_REJECTED` | template | never bypass; human reviews the script |
 | `ASSERT_FAILED` / custom | template | as designed |
+| `ASK_UNANSWERED` | template | an `ask` step needs a `default` for unattended runs, or run with `--on-ask pause` |
+| `ANSWER_INVALID` | – | your answer does not fit `answer.type`; the run stays paused, answer again |
 | `LOGIN_REQUIRED` | env | human logs in (`browser-recipewright login`) |
 | `CHALLENGE_DETECTED` | env | human solves it |
 | `HANDOFF_REQUIRED` | env | human action needed in a non-interactive run |
