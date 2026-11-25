@@ -38,6 +38,7 @@ export const dirs = {
   templates: () => path.join(homeDir(), 'templates'),
   scripts: () => path.join(homeDir(), 'scripts'),
   usage: () => path.join(homeDir(), 'usage'),
+  tasks: () => path.join(homeDir(), 'tasks'),
 };
 
 export function ensureDir(p: string): string {
