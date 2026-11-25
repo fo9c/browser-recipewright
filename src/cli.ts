@@ -19,6 +19,8 @@ import { buildJsonSchema } from './schema.js';
 import { checkRunDir, EVENTS_FILE, buildRunEventsJsonSchema } from './events.js';
 import { startDemoServer } from './demo.js';
 import { checkRecipeCalls } from './flow.js';
+import { startTask, endTask, currentTask, readJournal, listTasks, journal, taskRhythm, draftFromJournal, taskDir } from './task.js';
+import { preview as previewData } from './events.js';
 import { recordAnswer, listPending, readPendingAsk, parseAnswerValue, type PendingAsk } from './ask.js';
 import { readJson, writeJson, homeDir, dirs, log, sleep, RpaError, PKG_ROOT } from './util.js';
 
@@ -267,7 +269,9 @@ program
     if (o.fields) step.fields = JSON.parse(o.fields);
     if (o.by) step.by = o.by === 'page' ? 'page' : Number(o.by);
     if (o.ms) step.ms = Number(o.ms);
+    await taskRhythm();
     const c = await connect(o.profile);
+    const urlBefore = c.page.url();
     try {
       if (!step.saveAs) step.saveAs = '_act_out';
       const tpl = { id: '_act', version: '0.0.0', title: 'act', site: ['*'], defaults: { humanize: o.humanize }, steps: [step] };
@@ -278,6 +282,7 @@ program
       const shot = rec?.artifacts?.find((a: string) => a.endsWith('.png'));
       const screenshot = shot ? path.join(res.runDir, shot) : fs.existsSync(path.join(res.runDir, 'failure', 'screenshot.png')) ? path.join(res.runDir, 'failure', 'screenshot.png') : null;
       if (step.saveAs === '_act_out') delete step.saveAs;
+      journal({ type: 'act', profile: o.profile, step, status: res.status, urlBefore, urlAfter: c.page.url(), runDir: res.runDir, error: res.error ?? null, output: previewData(value, 3, 300), endedAt: new Date().toISOString() });
       if (step.action === 'collect' && Array.isArray(value)) {
         // collect: lead with the items and a per-field fill report, so it is obvious what the fields extracted
         const fieldNames = Object.keys(step.fields || {});
@@ -346,16 +351,26 @@ program
   .action(wrap(async (ref, o) => {
     if (!['pause', 'default', 'fail'].includes(o.onAsk)) throw new RpaError('INPUT_INVALID', '--on-ask must be pause, default or fail');
     const loaded = loadTemplate(ref);
+    await taskRhythm();
     const runner = new Runner({
       loaded, inputs: parseInputs(o.input, o.inputs), profile: o.profile, headless: o.headless, keepOpen: o.keepOpen,
       handoff: o.handoff === false ? 'never' : 'auto', humanize: o.humanize === false ? false : undefined,
       screenshots: o.screenshots, resumeFrom: o.resume, handoffTimeoutMs: Number(o.handoffTimeout) * 60000, onAsk: o.onAsk,
     });
-    printRunResult(await runner.run());
+    printRunResult(await runner.run(), 'run');
   }));
 
 /** The JSON a finished, failed or paused run prints. A paused run (exit code 4) carries the question for the agent. */
-function printRunResult(res: import('./engine.js').RunResult) {
+function printRunResult(res: import('./engine.js').RunResult, kind: 'run' | 'answer') {
+  try {
+    const run = readJson(path.join(res.runDir, 'run.json'));
+    journal({
+      type: kind, templateId: run.templateId, templateVersion: run.templateVersion, templatePath: run.templatePath, profile: run.profile,
+      inputs: run.inputs, site: (() => { try { return loadTemplate(run.templatePath).template.site; } catch { return undefined; } })(),
+      status: res.status, runDir: res.runDir, error: res.error ?? null, ...(res.ask ? { ask: { step: res.ask.path, question: res.ask.question } } : {}),
+      output: res.status === 'success' ? previewData(res.output, 3, 300) : undefined, endedAt: new Date().toISOString(),
+    });
+  } catch {}
   if (res.status === 'paused') {
     out({ status: 'paused', runDir: res.runDir, ask: askForAgent(res.ask!), error: null });
     process.exitCode = 4;
@@ -404,8 +419,9 @@ program
     const run = readJson(path.join(runDir, 'run.json'));
     let loaded;
     try { loaded = loadTemplate(run.templatePath); } catch { loaded = loadTemplate(run.templateId); }
+    await taskRhythm();
     const runner = new Runner({ loaded, continueRun: runDir, headless: o.headless, keepOpen: o.keepOpen, onAsk: o.onAsk, handoff: o.headless ? 'never' : 'auto' });
-    printRunResult(await runner.run());
+    printRunResult(await runner.run(), 'answer');
   }));
 
 program
@@ -416,6 +432,80 @@ program
     for (const a of asks) log.info(`⏸ ${a.since}  ${a.templateId}  ${a.path}: ${a.question}\n    ${a.runDir}`);
     if (!asks.length) log.info('no run is waiting for an answer');
     out({ status: 'ok', pending: asks.map((a) => ({ runDir: a.runDir, templateId: a.templateId, ...askForAgent(a) })) });
+  }));
+
+// ---------------- tasks (live work: one record, drafts, rhythm) ----------------
+const task = program.command('task').description('group live work (act, run, answer, your decisions) into one task record; turn it into a recipe / flow draft');
+
+task
+  .command('start <name>')
+  .description('start (or reopen) a task; from now on act / run / answer are recorded in it')
+  .option('--gap <ms>', 'random pause between steps of this task, e.g. 2000-6000 (human rhythm between fragments)')
+  .option('--note <text>', 'what the task is for')
+  .action(wrap(async (name, o) => {
+    let gapMs: any;
+    if (o.gap) {
+      const m = String(o.gap).match(/^(\d+)(?:-(\d+))?$/);
+      if (!m) throw new RpaError('INPUT_INVALID', '--gap expects milliseconds like 3000 or 2000-6000');
+      gapMs = m[2] ? [Number(m[1]), Number(m[2])] : Number(m[1]);
+    }
+    const t = startTask(name, { gapMs, note: o.note });
+    log.info(`▶ task "${t.name}" is current; act / run / answer are recorded in ${taskDir(t.name)}`);
+    out({ status: 'ok', task: t, dir: taskDir(t.name) });
+  }));
+
+task
+  .command('note <text>')
+  .description('record a decision you made (it becomes an ask breakpoint in a draft)')
+  .option('--data <json>', 'the data the decision was about (JSON)')
+  .action(wrap(async (text, o) => {
+    if (!currentTask()) throw new RpaError('INPUT_INVALID', 'no current task; start one with: browser-recipewright task start <name>');
+    const e = journal({ type: 'decision', text, ...(o.data ? { data: JSON.parse(o.data) } : {}) });
+    out({ status: 'ok', entry: e });
+  }));
+
+task
+  .command('show [name]')
+  .description('print the journal of a task (default: the current one)')
+  .action(wrap(async (name) => {
+    const n = name ?? currentTask()?.name;
+    if (!n) throw new RpaError('INPUT_INVALID', 'no current task; pass a name (see: browser-recipewright task list)');
+    const entries = readJournal(n);
+    for (const e of entries) log.info(`${String(e.seq).padStart(3)} ${e.type.padEnd(8)} ${e.type === 'act' ? `${e.step?.action} ${e.status}` : e.type === 'decision' ? e.text : `${e.templateId} ${e.status}${e.ask ? ` ⏸ ${e.ask.question}` : ''}`}`);
+    out({ status: 'ok', task: n, entries });
+  }));
+
+task
+  .command('list')
+  .description('list tasks')
+  .action(wrap(async () => out({ status: 'ok', tasks: listTasks() })));
+
+task
+  .command('end')
+  .description('stop recording into the current task')
+  .action(wrap(async () => out({ status: 'ok', ended: endTask() })));
+
+task
+  .command('draft [name]')
+  .description('turn a task journal into a recipe draft (act steps) or a flow draft (recipe runs → recipe steps, notes → ask breakpoints); prints validation')
+  .option('--from <seq>', 'first journal entry to use')
+  .option('--to <seq>', 'last journal entry to use')
+  .option('--id <id>', 'id of the draft (default draft/<task>)')
+  .option('--title <text>', 'title of the draft')
+  .option('--param <key=value>', 'turn a literal value into an input, e.g. --param keyword="AI agent" (repeatable)', collect, [])
+  .option('-o, --out <file>', 'where to write it (default: <task folder>/draft.json)')
+  .action(wrap(async (name, o) => {
+    const n = name ?? currentTask()?.name;
+    if (!n) throw new RpaError('INPUT_INVALID', 'no current task; pass a name (see: browser-recipewright task list)');
+    const params = parseInputs(o.param);
+    const r = draftFromJournal(n, { from: o.from ? Number(o.from) : undefined, to: o.to ? Number(o.to) : undefined, id: o.id, title: o.title, params });
+    const file = path.resolve(o.out || path.join(taskDir(n), 'draft.json'));
+    writeJson(file, r.template);
+    for (const e of r.validation.errors) log.info(`❌ [${e.stepId ?? '-'}] ${e.path}: ${e.message}`);
+    for (const w of r.validation.warnings) log.info(`⚠️  [${w.stepId ?? '-'}] ${w.path}: ${w.message}`);
+    log.info(`✎ ${r.template.kind} draft with ${r.template.steps.length} step(s) → ${file}`);
+    log.info('  next: review it (ids, notes, expect, startOn, inputs), then: browser-recipewright validate <file> && browser-recipewright save <file>');
+    out({ status: r.validation.ok ? 'ok' : 'invalid', file, kind: r.template.kind, steps: r.template.steps.length, skipped: r.skipped, errors: r.validation.errors, warnings: r.validation.warnings });
   }));
 
 program
