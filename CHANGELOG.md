@@ -8,6 +8,10 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 ## [Unreleased]
 
 ### Added
+- **断点（`ask` 步骤）**：配方可以在中途停下，把问题和数据交给调用它的 Agent 判断（例如"这 30 条帖子里哪些真正相关"），浏览器停在原页面。`run` 以退出码 `4` 结束并打印问题；Agent 用 `browser-recipewright answer <runDir> --value ...` 回答后，同一次运行从这一步接着跑（循环、`if`、`group` 内部也行），记录写在同一个运行目录里。执行器自己从不调用模型。答案格式：`text` `number` `boolean` `choice` `pick`（从列表里挑编号）`json`。
+- `browser-recipewright pending`：列出所有停在断点、等待回答的运行。
+- `run --on-ask pause|default|fail`；`batch` 和 `selfcheck` 无人值守，断点使用步骤的 `default`（`batch.json` 可设 `"onAsk": "fail"`）。
+- 运行数据格式 v1 新增（向后兼容）：`ask.start`、`ask.answered`、`run.pause`、`run.resume` 事件，步骤状态 `paused`，运行状态 `paused`，以及暂停期间的 `ask.json`。
 - `browser-recipewright selfcheck`：在自带的本地测试页上用内置配方 `selfcheck/basic` 跑一遍所有核心浏览器操作（输入、选择、勾选、点击、按键、等待、悬停、滚动提取、跳转、返回），并检查输入是否可信、拟人。每项一行通过 / 失败。
 
 ### Changed
