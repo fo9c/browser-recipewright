@@ -194,6 +194,10 @@ export function validateTemplate(tpl: any): ValidationResult {
           }
           break;
         }
+        case 'recipe':
+          if (s.recipe === tpl.id) add('error', sid, `${p}.recipe`, 'a recipe cannot call itself');
+          if (s.inputs && (typeof s.inputs !== 'object' || Array.isArray(s.inputs))) add('error', sid, `${p}.inputs`, 'inputs must be an object');
+          break;
         case 'waitFor':
           if (!s.target && !s.url && !s.text && !s.until) add('error', sid, p, 'waitFor needs one of target / url / text / until');
           if (s.until) checkCond(s.until, sid, `${p}.until`, roots);
@@ -252,6 +256,20 @@ export function validateTemplate(tpl: any): ValidationResult {
   for (const v of appendTargets(tpl.steps)) declaredVars.add(v);
   walk(tpl.steps, 'steps', new Set());
   if (tpl.account?.loginCheck) checkCond(tpl.account.loginCheck, null, 'account.loginCheck', new Set());
+  if (tpl.startOn?.when) checkCond(tpl.startOn.when, null, 'startOn.when', new Set());
+  if (typeof tpl.startOn?.goto === 'string') {
+    checkRefs(tpl.startOn.goto, null, 'startOn.goto', new Set());
+    const u = tpl.startOn.goto;
+    if (!/^\{\{/.test(u)) {
+      try {
+        const host = new URL(u.replace(/\{\{[^}]*\}\}/g, '')).hostname;
+        if (!site.some((d) => hostMatches(host, d))) add('error', null, 'startOn.goto', `host "${host}" is not in site [${site.join(', ')}]`);
+      } catch {
+        add('error', null, 'startOn.goto', `not an absolute URL: ${u}`);
+      }
+    }
+  }
+  if (tpl.kind === 'flow' && !JSON.stringify(tpl.steps).match(/"action":"(recipe|ask)"/)) add('warning', null, 'kind', 'a flow usually calls recipes (action "recipe") and has breakpoints (action "ask")');
   if (tpl.outputs?.from) checkRefs(tpl.outputs.from, null, 'outputs.from', new Set());
   if (bigLoop && !hasGap) add('warning', null, 'defaults.stepGapMs', 'loops over 20 rounds with no step gap; add defaults.stepGapMs to avoid looking like a bot');
   return finish(issues);

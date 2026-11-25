@@ -143,9 +143,11 @@ export const ACTION_SCHEMAS: Record<string, z.ZodTypeAny> = {
   }),
   while: s({ when: Cond, do: Steps, maxIterations: z.number().int().min(1).max(10000) }),
   group: s({ steps: Steps }),
+  // run another recipe (a fragment) on the same page, in the same run: flows are recipes made of these + ask steps
+  recipe: s({ recipe: z.string().min(1), inputs: z.record(z.string(), z.any()).optional() }),
 };
 
-export const ATOMIC_ACTIONS = Object.keys(ACTION_SCHEMAS).filter((a) => !['if', 'forEach', 'while', 'group'].includes(a));
+export const ATOMIC_ACTIONS = Object.keys(ACTION_SCHEMAS).filter((a) => !['if', 'forEach', 'while', 'group', 'recipe'].includes(a));
 export const TARGET_ACTIONS = ['click', 'fill', 'type', 'hover', 'select', 'check', 'upload', 'read', 'queryAll'];
 
 export const InputDef = z.strictObject({
@@ -163,6 +165,8 @@ export const TemplateSchema = z.strictObject({
   version: z.string().regex(/^\d+\.\d+\.\d+$/, 'semver like 0.1.0'),
   title: z.string().min(1),
   description: z.string().optional(),
+  /** "recipe": one fixed fragment of work · "flow": strings recipes and breakpoints together (informational) */
+  kind: z.enum(['recipe', 'flow']).optional(),
   tags: z.array(z.string()).optional(),
   site: z.array(z.string()).min(1),
   account: z
@@ -174,6 +178,11 @@ export const TemplateSchema = z.strictObject({
     })
     .optional(),
   inputs: z.record(z.string(), InputDef).optional(),
+  /**
+   * Where this fragment starts. If the browser already satisfies `when`, the recipe starts right there (an agent
+   * chaining fragments in one browser); otherwise it opens `goto` first, or fails with START_PAGE_MISMATCH.
+   */
+  startOn: z.strictObject({ when: Cond, goto: z.string().optional() }).optional(),
   defaults: z
     .strictObject({
       timeoutMs: z.number().int().positive().optional(),
