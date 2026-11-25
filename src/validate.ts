@@ -3,6 +3,7 @@ import { ACTION_SCHEMAS, TemplateSchema, Target, PRIMARY_LOCATOR_KEYS, TARGET_AC
 import { findRefs, parseExpr, FILTERS } from './render.js';
 import { CONDITION_KEYS, conditionTargets } from './conditions.js';
 import { checkScript, hostMatches } from './scripts.js';
+import { coerceAnswer } from './ask.js';
 
 export interface Issue {
   level: 'error' | 'warning';
@@ -176,6 +177,23 @@ export function validateTemplate(tpl: any): ValidationResult {
         case 'handoff':
           if (s.until) checkCond(s.until, sid, `${p}.until`, roots);
           break;
+        case 'ask': {
+          const type = s.answer?.type ?? 'text';
+          if (type === 'choice' && !s.answer?.options) add('error', sid, `${p}.answer`, 'answer type "choice" needs "options"');
+          if (type !== 'choice' && s.answer?.options) add('warning', sid, `${p}.answer.options`, `"options" is only used by answer type "choice" (this one is "${type}")`);
+          if (type === 'pick' && s.data === undefined) add('error', sid, `${p}.data`, 'answer type "pick" needs "data" (the list to pick from)');
+          if (type === 'pick' && s.data !== undefined && !Array.isArray(s.data) && !(typeof s.data === 'string' && /^\{\{.*\}\}$/.test(s.data.trim())))
+            add('error', sid, `${p}.data`, 'answer type "pick" needs "data" to be a list, e.g. "{{vars.items}}"');
+          if (!s.saveAs) add('warning', sid, p, 'ask without saveAs: the answer is recorded but no later step can use it');
+          if (s.default !== undefined && findRefs(s.default).length === 0 && (type !== 'pick' || Array.isArray(s.data))) {
+            try {
+              coerceAnswer(s.answer, s.default, s.data);
+            } catch (e: any) {
+              add('error', sid, `${p}.default`, `default ${e.message.replace(/^answer /, '')}`);
+            }
+          }
+          break;
+        }
         case 'waitFor':
           if (!s.target && !s.url && !s.text && !s.until) add('error', sid, p, 'waitFor needs one of target / url / text / until');
           if (s.until) checkCond(s.until, sid, `${p}.until`, roots);
