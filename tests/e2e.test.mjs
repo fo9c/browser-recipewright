@@ -243,3 +243,71 @@ test('selfcheck: built-in recipe exercises every core action on the local page',
   assert.equal(r.json.observed.webdriver, 'false');
   assert.match(r.stderr, /自检通过/);
 });
+
+test('breakpoints: ask pauses (exit 4), answer continues the same run at that exact step, even inside a loop', { skip }, async () => {
+  const tpl = path.join(ROOT, 'tests', 'fixtures-ask.json');
+  const r = await cli('run', tpl, '-i', `base=${srv.url}`, '--headless', '-p', 'test/ask');
+  assert.equal(r.code, 4, r.stderr);
+  assert.equal(r.json.status, 'paused');
+  assert.equal(r.json.ask.step, 'pick');
+  assert.equal(r.json.ask.answer.type, 'pick');
+  assert.equal(r.json.ask.data.length, 6);
+  assert.equal(r.json.ask.data[2]['#'], 2);
+  const runDir = r.json.runDir;
+  // the browser stays open on the page while the agent thinks
+  assert.ok((await cli('sessions')).json.sessions.some((s) => s.profile === 'test/ask'));
+  const pend = await cli('pending');
+  assert.equal(pend.json.pending.length, 1);
+  assert.equal(pend.json.pending[0].runDir, runDir);
+  // a wrong answer is refused and the run stays paused
+  const bad = await cli('answer', runDir, '--value', '[9]');
+  assert.equal(bad.code, 2);
+  assert.equal(bad.json.error.code, 'ANSWER_INVALID');
+  // pick → stops again inside the loop
+  const a1 = await cli('answer', runDir, '--value', '[1,3]', '--headless');
+  assert.equal(a1.code, 4, a1.stderr);
+  assert.equal(a1.json.runDir, runDir);
+  assert.equal(a1.json.ask.step, 'each[0].keep');
+  assert.equal(a1.json.ask.question, 'Keep 条目 2?');
+  const a2 = await cli('answer', runDir, '--value', 'yes', '--headless');
+  assert.equal(a2.json.ask.step, 'each[1].keep', a2.stderr);
+  assert.match(a2.stderr, /each\[0\]\.heading \(read\) already done before the pause/);
+  const a3 = await cli('answer', runDir, '--value', 'false', '--headless');
+  assert.equal(a3.json.ask.step, 'maybe.confirm', a3.stderr);
+  const a4 = await cli('answer', runDir, '--value', 'more', '--headless');
+  assert.equal(a4.code, 0, a4.stderr);
+  assert.equal(a4.json.status, 'success');
+  const out = JSON.parse(fs.readFileSync(path.join(runDir, 'output.json'), 'utf8'));
+  assert.deepEqual(out.map((x) => [x.title, x.keep]), [['条目 2', true], ['条目 4', false]]);
+  // the value read before the pause in the same round survived the pause
+  for (const x of out) assert.equal(x.heading, 'browser-recipewright 自检页');
+  const state = JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8'));
+  assert.equal(state.vars.decision, 'more');
+  // one run directory, one record: finished steps were not repeated, every pause has a resume
+  const steps = fs.readFileSync(path.join(runDir, 'steps.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(steps.filter((s) => s.path === 'each[0].heading').length, 1);
+  assert.equal(steps.filter((s) => s.path === 'rows').length, 1);
+  assert.equal(steps.filter((s) => s.stepId === 'keep' && s.answeredBy === 'agent').length, 2);
+  const chk = await cli('check-run', runDir);
+  assert.equal(chk.json.status, 'ok', chk.stderr);
+  assert.equal(chk.json.finished, true);
+  const types = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).type);
+  assert.equal(types.filter((t) => t === 'run.pause').length, 4);
+  assert.equal(types.filter((t) => t === 'run.resume').length, 4);
+  assert.equal(types.filter((t) => t === 'ask.answered').length, 4);
+  assert.equal(types.at(-1), 'run.end');
+  assert.equal((await cli('pending')).json.pending.length, 0);
+  // the run started the browser and nobody asked to keep it: it is closed at the real end
+  assert.ok(!(await cli('sessions')).json.sessions.some((s) => s.profile === 'test/ask'));
+});
+
+test('breakpoints: unattended runs use the default answer, or fail with ASK_UNANSWERED', { skip }, async () => {
+  const tpl = path.join(ROOT, 'tests', 'fixtures-ask.json');
+  const d = await cli('run', tpl, '-i', `base=${srv.url}`, '--headless', '-p', 'test/ask', '--on-ask', 'default');
+  assert.equal(d.json.status, 'success', d.stderr);
+  const out = JSON.parse(fs.readFileSync(d.json.output, 'utf8'));
+  assert.deepEqual(out.map((x) => x.title), ['条目 1', '条目 2']);
+  const f = await cli('run', tpl, '-i', `base=${srv.url}`, '--headless', '-p', 'test/ask', '--on-ask', 'fail');
+  assert.equal(f.code, 1);
+  assert.equal(f.json.error.code, 'ASK_UNANSWERED');
+});
