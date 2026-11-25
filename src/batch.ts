@@ -15,6 +15,7 @@
  *   "dailyCapPerAccount": 5,
  *   "onLoginRequired": "skip" | "handoff",
  *   "onChallenge": "stop" | "skip",
+ *   "onAsk": "default" | "fail",                      // ask steps (breakpoints): use their default answer (default), or fail the job
  *   "headless": false
  * }
  */
@@ -168,6 +169,8 @@ export async function runBatch(opts: { file?: string; resumeDir?: string; retryF
       const runner = new Runner({
         loaded, inputs: job.inputs, profile: job.account.profile, account: job.account, headless,
         handoff: spec.onLoginRequired === 'handoff' ? 'auto' : 'never', forceClose: true,
+        // a batch runs unattended: breakpoints take their default answer instead of stopping every job
+        onAsk: spec.onAsk === 'fail' ? 'fail' : 'default',
       });
       const res = await runner.run();
       let status = res.status as string;
