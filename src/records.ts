@@ -43,6 +43,7 @@ export const ERROR_HINTS: Record<string, string> = {
   BROWSER_ERROR: 'Browser could not start or crashed. Run "browser-recipewright doctor".',
   ASSERT_FAILED: 'An assert step failed.',
   INPUT_INVALID: 'Missing or wrongly typed input.',
+  START_PAGE_MISMATCH: 'The recipe (a fragment) was started on the wrong page: its startOn.when does not hold here. Run the fragment that leads to that page first, navigate there with act goto, or give the recipe startOn.goto.',
   ASK_UNANSWERED: 'An ask step (breakpoint) needed an answer but the run could not stop for one (batch / --on-ask default|fail). Give the step a "default", or run it with --on-ask pause.',
   ANSWER_INVALID: 'The answer does not fit the ask step\'s answer format. Read the question again (browser-recipewright pending) and answer in that format.',
 };

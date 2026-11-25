@@ -108,6 +108,7 @@ export function stepOutline(steps: any[], prefix = ''): any[] {
     const node: any = { id: s.id, path: p, action: s.action };
     if (s.description) node.description = s.description;
     if (s.optional) node.optional = true;
+    if (s.action === 'recipe') node.recipe = s.recipe;
     if (s.action === 'forEach' || s.action === 'while') node.loop = true;
     const kids: Record<string, any[]> = {};
     for (const k of ['steps', 'do', 'then', 'else']) if (Array.isArray(s[k])) kids[k] = stepOutline(s[k], s.action === 'forEach' || s.action === 'while' ? `${p}[*]` : p);
@@ -162,6 +163,8 @@ export const EVENT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   'ask.answered': z.looseObject({ step: z.number().int(), path: z.string(), stepId: z.string(), source: z.enum(['agent', 'default']) }),
   'run.pause': z.looseObject({ path: z.string(), stepId: z.string(), reason: z.literal('ask') }),
   'run.resume': z.looseObject({ path: z.string() }),
+  // fragments: a recipe step runs another recipe inside this run; its steps follow with paths "<path>.<stepId>"
+  'recipe.enter': z.looseObject({ path: z.string(), recipeId: z.string(), recipeVersion: z.string() }),
 };
 
 export interface RunCheck {

@@ -18,6 +18,7 @@ import { runBatch, usageToday } from './batch.js';
 import { buildJsonSchema } from './schema.js';
 import { checkRunDir, EVENTS_FILE, buildRunEventsJsonSchema } from './events.js';
 import { startDemoServer } from './demo.js';
+import { checkRecipeCalls } from './flow.js';
 import { recordAnswer, listPending, readPendingAsk, parseAnswerValue, type PendingAsk } from './ask.js';
 import { readJson, writeJson, homeDir, dirs, log, sleep, RpaError, PKG_ROOT } from './util.js';
 
@@ -318,6 +319,9 @@ program
   .action(wrap(async (ref) => {
     const { template, path: p } = loadTemplate(ref);
     const r = validateTemplate(template);
+    // a flow calls other recipes: check that they exist, are valid and get the inputs they need
+    for (const i of checkRecipeCalls(template, p)) (i.level === 'error' ? r.errors : r.warnings).push(i);
+    r.ok = r.errors.length === 0;
     for (const e of r.errors) log.info(`❌ [${e.stepId ?? '-'}] ${e.path}: ${e.message}`);
     for (const w of r.warnings) log.info(`⚠️  [${w.stepId ?? '-'}] ${w.path}: ${w.message}`);
     log.info(r.ok ? `✅ valid (${r.warnings.length} warning(s))` : `❌ ${r.errors.length} error(s)`);
