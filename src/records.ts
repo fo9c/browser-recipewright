@@ -12,7 +12,7 @@ export interface StepRecord {
   stepId: string;
   path: string;
   action: string;
-  status: 'ok' | 'failed' | 'soft-failed' | 'skipped';
+  status: 'ok' | 'failed' | 'soft-failed' | 'skipped' | 'paused';
   startedAt: string;
   durationMs: number;
   urlBefore: string | null;
@@ -43,6 +43,8 @@ export const ERROR_HINTS: Record<string, string> = {
   BROWSER_ERROR: 'Browser could not start or crashed. Run "browser-recipewright doctor".',
   ASSERT_FAILED: 'An assert step failed.',
   INPUT_INVALID: 'Missing or wrongly typed input.',
+  ASK_UNANSWERED: 'An ask step (breakpoint) needed an answer but the run could not stop for one (batch / --on-ask default|fail). Give the step a "default", or run it with --on-ask pause.',
+  ANSWER_INVALID: 'The answer does not fit the ask step\'s answer format. Read the question again (browser-recipewright pending) and answer in that format.',
 };
 
 export const errorCategory = (code: string): 'env' | 'template' => (ENV_ERROR_CODES.has(code) || code === 'HANDOFF_REQUIRED' ? 'env' : 'template');
@@ -56,7 +58,18 @@ export class RunRecorder {
   events: RunEvents;
   private stepsFile: string;
   private baseDir: string;
-  constructor(templateId: string, baseDir = dirs.runs()) {
+  constructor(templateId: string, baseDir = dirs.runs(), continueDir?: string) {
+    if (continueDir) {
+      // continue a paused run in place: same directory, records and events carry on
+      this.dir = path.resolve(continueDir);
+      this.baseDir = path.dirname(this.dir);
+      this.meta = readJson(path.join(this.dir, 'run.json'));
+      this.runId = this.meta.runId;
+      this.stepsFile = path.join(this.dir, 'steps.jsonl');
+      this.seq = readSteps(this.dir).reduce((m, r) => Math.max(m, r.seq || 0), 0);
+      this.events = new RunEvents(this.dir, { append: true });
+      return;
+    }
     this.baseDir = baseDir;
     this.runId = `${timestampId()}_${safeName(templateId.replace(/\//g, '-'))}_${shortRand()}`;
     this.dir = ensureDir(path.join(baseDir, this.runId));
@@ -70,6 +83,21 @@ export class RunRecorder {
     writeJson(path.join(this.dir, 'run.json'), this.meta);
     const { format, runDir, status, ...rest } = this.meta;
     this.events.emit('run.start', { ...rest, steps: stepOutline(steps) });
+    this.pointLatest();
+  }
+  /** A paused run continues: run.json goes back to "running" and the stream gets a run.resume event. */
+  resume(info: { path: string; stepId?: string }) {
+    const { pausedAt, pause, ...rest } = this.meta;
+    this.meta = { ...rest, status: 'running', resumes: (this.meta.resumes || 0) + 1 };
+    writeJson(path.join(this.dir, 'run.json'), this.meta);
+    this.events.emit('run.resume', { path: info.path, ...(info.stepId ? { stepId: info.stepId } : {}), pausedMs: pausedAt ? Date.now() - Date.parse(pausedAt) : null });
+    this.pointLatest();
+  }
+  /** The run stops at a breakpoint: it is not finished, it waits for the agent's answer. */
+  pause(info: { path: string; stepId: string; question: string }) {
+    this.meta = { ...this.meta, status: 'paused', pausedAt: new Date().toISOString(), pause: { reason: 'ask', ...info } };
+    writeJson(path.join(this.dir, 'run.json'), this.meta);
+    this.events.emit('run.pause', { reason: 'ask', path: info.path, stepId: info.stepId, ask: 'ask.json' });
     this.pointLatest();
   }
   /** runs/_latest.json tells a viewer which run is the newest (and whether it is still running) without scanning. */

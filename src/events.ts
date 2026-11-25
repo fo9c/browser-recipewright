@@ -8,6 +8,8 @@
  *  - one JSON object per line, appended in order, each line ends with "\n";
  *  - every event has the envelope { v, seq, t, ms, type } (seq starts at 1 and has no gaps);
  *  - the first event is "run.start", the last one (if the process was not killed) is "run.end";
+ *  - a run that stops at a breakpoint ends with "run.pause" instead; when the agent answers, the same file
+ *    continues with "run.resume" (seq and ms carry on), and the run later ends with "run.end" as usual;
  *  - new event types and new fields may be added within v1: readers must ignore what they do not know.
  */
 import fs from 'node:fs';
@@ -43,10 +45,18 @@ export class RunEvents {
   private t0 = Date.now();
   private listeners = new Set<EventListener>();
   private broken = false;
-  constructor(runDir: string) {
+  constructor(runDir: string, opts: { append?: boolean } = {}) {
     this.file = path.join(runDir, EVENTS_FILE);
     try {
-      fs.writeFileSync(this.file, '');
+      if (opts.append && fs.existsSync(this.file)) {
+        // continuing a paused run: keep numbering and the time origin of the existing stream
+        const prev = readEvents(runDir);
+        const last = prev[prev.length - 1];
+        if (last) {
+          this.seq = last.seq;
+          this.t0 = Date.parse(prev[0].t);
+        }
+      } else fs.writeFileSync(this.file, '');
     } catch {
       this.broken = true;
     }
@@ -127,7 +137,7 @@ const Envelope = z.looseObject({
   type: z.string().regex(/^[a-z][a-zA-Z]*(\.[a-z][a-zA-Z]*)*$/),
 });
 const Err = z.looseObject({ code: z.string(), message: z.string() });
-const StepStatus = z.enum(['ok', 'failed', 'soft-failed', 'skipped']);
+const StepStatus = z.enum(['ok', 'failed', 'soft-failed', 'skipped', 'paused']);
 
 /** Payload schemas of the event types defined in v1. Unknown types are allowed (forward compatible). */
 export const EVENT_SCHEMAS: Record<string, z.ZodTypeAny> = {
@@ -147,6 +157,11 @@ export const EVENT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   'handoff.start': z.looseObject({ reason: z.string(), code: z.string() }),
   'handoff.end': z.looseObject({ waitedMs: z.number(), resolved: z.boolean() }),
   artifact: z.looseObject({ path: z.string(), kind: z.string() }),
+  // breakpoints (added in v1, additive): the agent decides something in the middle of a run
+  'ask.start': z.looseObject({ step: z.number().int(), path: z.string(), stepId: z.string(), question: z.string(), answerType: z.string() }),
+  'ask.answered': z.looseObject({ step: z.number().int(), path: z.string(), stepId: z.string(), source: z.enum(['agent', 'default']) }),
+  'run.pause': z.looseObject({ path: z.string(), stepId: z.string(), reason: z.literal('ask') }),
+  'run.resume': z.looseObject({ path: z.string() }),
 };
 
 export interface RunCheck {
@@ -216,8 +231,10 @@ export function checkRunDir(runDir: string): RunCheck {
   });
   if (events.length && events[0].type !== 'run.start') errors.push('the first event must be "run.start"');
   const finished = events.length > 0 && events[events.length - 1].type === 'run.end';
-  if (!finished && run.status !== 'running') warnings.push('no "run.end" event: the process was probably killed');
-  if (finished && openSteps.size) warnings.push(`${openSteps.size} step(s) started but never ended: ${[...openSteps.values()].slice(0, 5).join(', ')}`);
+  const paused = events.length > 0 && events[events.length - 1].type === 'run.pause';
+  if (run.status === 'paused' && !paused) warnings.push('run.json says "paused" but the last event is not "run.pause"');
+  if (!finished && !paused && run.status !== 'running') warnings.push('no "run.end" event: the process was probably killed');
+  if ((finished || paused) && openSteps.size) warnings.push(`${openSteps.size} step(s) started but never ended: ${[...openSteps.values()].slice(0, 5).join(', ')}`);
   return res(format, events.length, finished);
 }
 
