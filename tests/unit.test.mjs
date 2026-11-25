@@ -11,6 +11,7 @@ import { parseCsv, planJobs } from '../dist/batch.js';
 import { checkSchema } from '../dist/jsonschema.js';
 import { buildJsonSchema } from '../dist/schema.js';
 import { coerceAnswer } from '../dist/ask.js';
+import { checkRecipeCalls } from '../dist/flow.js';
 
 const load = (p) => JSON.parse(fs.readFileSync(new URL(p, import.meta.url)));
 
@@ -254,4 +255,21 @@ test('ask: validate checks the answer format, pick data and defaults', () => {
   assert.match(errs({ id: 'q', action: 'ask', question: 'x', answer: { type: 'guess' } }), /type/);
   assert.match(warns({ id: 'q', action: 'ask', question: 'x' }), /ask without saveAs/);
   assert.equal(validateTemplate(load('./fixtures-ask.json')).ok, true);
+});
+
+test('flows: recipe calls are checked (exists, inputs, circles) and startOn is validated', () => {
+  const from = new URL('./fragments/flow.json', import.meta.url).pathname;
+  const flow = (steps) => ({ id: 't/flow', version: '0.1.0', title: 't', kind: 'flow', site: ['127.0.0.1'], steps });
+  assert.deepEqual(checkRecipeCalls(load('./fragments/flow.json'), from).filter((i) => i.level === 'error'), []);
+  const msgs = (steps) => checkRecipeCalls(flow(steps), from).map((i) => i.message).join('\n');
+  assert.match(msgs([{ id: 'a', action: 'recipe', recipe: './nope.json' }]), /not found/);
+  assert.match(msgs([{ id: 'a', action: 'recipe', recipe: './sc-collect.json' }]), /needs input "base"/);
+  assert.match(msgs([{ id: 'a', action: 'recipe', recipe: './sc-collect.json', inputs: { base: 'x', color: 1 } }]), /has no input "color"/);
+  const circle = { ...flow([{ id: 'a', action: 'recipe', recipe: './flow.json', inputs: { base: 'x' } }]), id: 'test/flow' };
+  assert.match(checkRecipeCalls(circle, from).map((i) => i.message).join('\n'), /circle: test\/flow → test\/flow/);
+  assert.equal(validateTemplate(flow([{ id: 'a', action: 'recipe', recipe: 't/flow' }])).ok, false);
+  const so = (startOn) => validateTemplate({ id: 't/x', version: '0.1.0', title: 't', site: ['example.com'], startOn, steps: [{ id: 'w', action: 'wait', ms: 1 }] });
+  assert.equal(so({ when: { urlContains: '/search' }, goto: 'https://example.com/search' }).ok, true);
+  assert.match(JSON.stringify(so({ when: { urlContains: '/s' }, goto: 'https://evil.com/' }).errors), /not in site/);
+  assert.match(JSON.stringify(so({ when: { bogus: 1 } }).errors), /unknown condition/);
 });

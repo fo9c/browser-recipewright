@@ -1,0 +1,16 @@
+{
+  "id": "test/flow",
+  "version": "0.1.0",
+  "title": "Test flow: collect rows (fragment), let the agent pick, then visit page 2 (fragment with its own breakpoint)",
+  "kind": "flow",
+  "site": ["127.0.0.1", "localhost"],
+  "inputs": { "base": { "type": "string" } },
+  "defaults": { "timeoutMs": 10000, "humanize": false },
+  "steps": [
+    { "id": "collect", "action": "recipe", "recipe": "./sc-collect.json", "inputs": { "base": "{{inputs.base}}", "count": 4 }, "saveAs": "rows" },
+    { "id": "pick", "action": "ask", "question": "Which rows matter?", "data": "{{vars.rows}}", "answer": { "type": "pick" }, "default": [0], "saveAs": "picked" },
+    { "id": "visit", "action": "recipe", "recipe": "./sc-next.json", "saveAs": "page2" },
+    { "id": "again", "action": "recipe", "recipe": "./sc-collect.json", "inputs": { "base": "{{inputs.base}}", "count": 2 }, "saveAs": "rows2" }
+  ],
+  "outputs": { "from": "{{vars.picked}}" }
+}

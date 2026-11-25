@@ -311,3 +311,51 @@ test('breakpoints: unattended runs use the default answer, or fail with ASK_UNAN
   assert.equal(f.code, 1);
   assert.equal(f.json.error.code, 'ASK_UNANSWERED');
 });
+
+test('fragments: a recipe starts on the page the browser already shows (startOn), or refuses the wrong page', { skip }, async () => {
+  const next = path.join(ROOT, 'tests', 'fragments', 'sc-next.json');
+  assert.equal((await cli('launch', '--headless', '-p', 'test/chain', '--url', `${srv.url}/selfcheck.html`)).json.status, 'ok');
+  const r = await cli('run', next, '-p', 'test/chain', '--on-ask', 'default');
+  assert.equal(r.json.status, 'success', r.stderr);
+  assert.match(r.stderr, /_start-on: already on the start page/);
+  assert.equal(JSON.parse(fs.readFileSync(r.json.output, 'utf8')), '自检第二页');
+  // the agent moves the browser somewhere else; the fragment notices it is not on its start page
+  assert.equal((await cli('act', 'goto', '--url', `${srv.url}/selfcheck-next.html`, '-p', 'test/chain')).json.status, 'success');
+  const bad = await cli('run', next, '-p', 'test/chain', '--on-ask', 'default');
+  assert.equal(bad.code, 1);
+  assert.equal(bad.json.error.code, 'START_PAGE_MISMATCH');
+  // the browser was started by launch, so runs leave it open for the next fragment
+  assert.ok((await cli('sessions')).json.sessions.some((s) => s.profile === 'test/chain'));
+  await cli('close', '-p', 'test/chain');
+});
+
+test('flows: recipe steps call fragments in one browser and one record, with breakpoints in and between them', { skip }, async () => {
+  const flow = path.join(ROOT, 'tests', 'fragments', 'flow.json');
+  const v = await cli('validate', flow);
+  assert.equal(v.json.status, 'ok', v.stderr);
+  const r = await cli('run', flow, '-i', `base=${srv.url}`, '--headless', '-p', 'test/flow');
+  assert.equal(r.code, 4, r.stderr);
+  assert.equal(r.json.ask.step, 'pick');
+  assert.equal(r.json.ask.data.length, 4);
+  const runDir = r.json.runDir;
+  const a1 = await cli('answer', runDir, '--value', '[1,2]', '--headless');
+  assert.equal(a1.json.ask.step, 'visit.come-back', a1.stderr);
+  assert.match(a1.stderr, /visit\._start-on: already on the start page/);
+  const a2 = await cli('answer', runDir, '--value', 'false', '--headless');
+  assert.equal(a2.json.status, 'success', a2.stderr);
+  assert.match(a2.stderr, /visit\.page2 \(read\) already done before the pause/);
+  // stayed on page 2, so the next fragment opened its own start page
+  assert.match(a2.stderr, /again\._start-on: opened the start page/);
+  const state = JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8'));
+  assert.equal(state.vars.page2, '自检第二页');
+  assert.equal(state.vars.rows2.length, 2);
+  assert.deepEqual(state.vars.picked.map((x) => x.title), ['条目 2', '条目 3']);
+  const steps = fs.readFileSync(path.join(runDir, 'steps.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.ok(steps.find((s) => s.path === 'collect.rows' && s.status === 'ok'));
+  assert.ok(steps.find((s) => s.path === 'visit' && s.recipe?.id === 'test/sc-next' && s.status === 'ok'));
+  assert.equal(steps.filter((s) => s.path === 'visit.go-next').length, 1);
+  const chk = await cli('check-run', runDir);
+  assert.equal(chk.json.status, 'ok', chk.stderr);
+  const types = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).type);
+  assert.equal(types.filter((t) => t === 'recipe.enter').length, 4); // collect, visit, visit again after the pause, again
+});
