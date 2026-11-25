@@ -20,6 +20,7 @@ import { loadScriptCode, hostMatches } from './scripts.js';
 import { validateTemplate } from './validate.js';
 import { appendTargets } from './schema.js';
 import { coerceAnswer, readPendingAsk, ASK_FILE, type PendingAsk } from './ask.js';
+import { resolveRecipe, checkRecipeCalls, MAX_RECIPE_DEPTH } from './flow.js';
 import type { LoadedTemplate } from './library.js';
 import { RpaError, sleep, pickMs, log, truncateForRecord, readJson, writeJson, ENV_ERROR_CODES } from './util.js';
 
@@ -75,7 +76,7 @@ class StepFailure extends RpaError {
   }
 }
 
-const CONTROL = new Set(['if', 'forEach', 'while', 'group']);
+const CONTROL = new Set(['if', 'forEach', 'while', 'group', 'recipe']);
 const RAW_KEYS = new Set(['expect', 'filter', 'until', 'that', 'when', 'do', 'then', 'else', 'steps', 'collectFrom', 'fields', 'item', 'in']);
 
 export function defaultProfile(tpl: any): string {
@@ -136,6 +137,9 @@ export class Runner {
   handoffMode: 'auto' | 'never';
   onAsk: 'pause' | 'default' | 'fail';
   site: string[];
+  /** the recipe whose steps are running now: the top template, or a fragment called by a `recipe` step */
+  cur: { tpl: any; path: string };
+  private depth = 0;
   private dossierWritten = false;
 
   constructor(opts: RunOptions) {
@@ -148,6 +152,7 @@ export class Runner {
     this.handoffMode = opts.headless ? 'never' : opts.handoff ?? 'auto';
     this.onAsk = opts.onAsk ?? (opts.connected ? 'fail' : 'pause');
     this.site = this.tpl.site || [];
+    this.cur = { tpl: this.tpl, path: opts.loaded.path };
     this.scope = { inputs: {}, vars: {}, account: opts.account || {} };
   }
 
@@ -177,8 +182,12 @@ export class Runner {
       nextStep: this.nextTop, nextStepId: this.tpl.steps[this.nextTop]?.id ?? null, vars: this.scope.vars, inputs: this.scope.inputs, loops: this.loops,
       done: [...new Set([...this.resumeDone, ...this.done])], branches: { ...this.resumeBranches, ...this.branches }, whileAt: { ...this.resumeWhileAt, ...this.whileAt },
       answers: this.answers, ownsBrowser: this.ownsBrowser,
+      frames: Object.fromEntries(Object.entries({ ...this.resumeFrames, ...this.frames }).map(([k, f]: [string, any]) => [k, { inputs: f.inputs, vars: f.vars }])),
     });
   }
+  /** variables of recipe fragments that are running now (by step path), so a pause inside one can continue */
+  private frames: Record<string, Scope> = {};
+  private resumeFrames: Record<string, { inputs: any; vars: any }> = {};
   private clearInner() {
     this.done.clear();
     this.resumeDone.clear();
@@ -186,6 +195,8 @@ export class Runner {
     this.resumeBranches = {};
     this.whileAt = {};
     this.resumeWhileAt = {};
+    this.frames = {};
+    this.resumeFrames = {};
   }
 
   // ---------- page probes ----------
@@ -225,7 +236,7 @@ export class Runner {
       if (ch) return new RpaError('CHALLENGE_DETECTED', `captcha / risk-control page detected (${ch})`);
       const url = this.page.url();
       if (/\/(login|signin|sign-in|sign_in)\b|\/flow\/login|passport\./i.test(url)) {
-        const lc = this.tpl.account?.loginCheck;
+        const lc = this.cur.tpl.account?.loginCheck;
         if (!lc || !(await this.cond(lc, this.scope)).pass) return new RpaError('LOGIN_REQUIRED', `redirected to a login page: ${url}`);
       }
     } catch {}
@@ -275,6 +286,8 @@ export class Runner {
   async run(): Promise<RunResult> {
     const v = validateTemplate(this.tpl);
     if (!v.ok) throw new RpaError('TEMPLATE_INVALID', `template is invalid:\n` + v.errors.map((e) => `  [${e.stepId ?? '-'}] ${e.path}: ${e.message}`).join('\n'));
+    const calls = checkRecipeCalls(this.tpl, this.opts.loaded.path).filter((e) => e.level === 'error');
+    if (calls.length) throw new RpaError('TEMPLATE_INVALID', `recipe calls are invalid:\n` + calls.map((e) => `  [${e.stepId ?? '-'}] ${e.path}: ${e.message}`).join('\n'));
     let resumeState: any = null;
     let inputs = this.opts.inputs || {};
     let cont: { prev: any; ask: PendingAsk | null } | null = null;
@@ -336,6 +349,7 @@ export class Runner {
       this.resumeBranches = resumeState.branches || {};
       this.resumeWhileAt = resumeState.whileAt || {};
       this.answers = resumeState.answers || {};
+      this.resumeFrames = resumeState.frames || {};
       this.ownsBrowser = !!resumeState.ownsBrowser && !this.opts.keepOpen;
     }
     // checkpoint right away, so even a run that fails before step 1 can be resumed
@@ -371,8 +385,9 @@ export class Runner {
           this.checkSite(prevRec.urlBefore);
           await this.page.goto(prevRec.urlBefore, { waitUntil: 'domcontentloaded', timeout: 30000 });
         }
-      } else if (this.tpl.account?.loginCheck && !this.opts.skipLoginCheck) {
-        await this.loginCheck();
+      } else {
+        if (this.tpl.account?.loginCheck && !this.opts.skipLoginCheck) await this.loginCheck();
+        await this.applyStartOn(this.tpl, this.scope, '');
       }
       const saveState = (next: number) => { this.nextTop = next; this.persist(); };
       for (const v of appendTargets(this.tpl.steps)) if (!Array.isArray(this.scope.vars[v])) this.scope.vars[v] = [];
@@ -430,8 +445,14 @@ export class Runner {
     const started = Date.now();
     const urlBefore = this.page.url();
     this.rec.events.emit('step.start', { step: seq, path: '_login-check', stepId: '_login-check', action: 'loginCheck', url: urlBefore });
-    if (!this.page.url().startsWith(url)) await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
-    let r = await this.waitCond(a.loginCheck, this.scope, 8000);
+    // a fragment called while the browser is already on its start page checks the login right there, without leaving
+    const inPlace = !this.page.url().startsWith(url) && (await this.startOnHolds(this.tpl, this.scope));
+    if (!this.page.url().startsWith(url) && !inPlace) await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    let r = await this.waitCond(a.loginCheck, this.scope, inPlace ? 3000 : 8000);
+    if (!r.pass && inPlace) {
+      await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+      r = await this.waitCond(a.loginCheck, this.scope, 8000);
+    }
     let handoffMs = 0;
     if (!r.pass) {
       const ch = await this.evalIso<string | null>(inpageCall('detectChallenge')).catch(() => null);
@@ -447,6 +468,91 @@ export class Runner {
       r = await this.cond(a.loginCheck, this.scope);
     }
     this.rec.step({ seq, stepId: '_login-check', path: '_login-check', action: 'loginCheck', status: 'ok', startedAt: new Date(started).toISOString(), durationMs: Date.now() - started, urlBefore, urlAfter: this.page.url(), locator: null, expect: { result: 'pass', why: r.why }, attempts: 1, output: null, artifacts: [], handoffMs });
+  }
+
+  // ---------- fragments ----------
+  async startOnHolds(tpl: any, scope: Scope): Promise<boolean> {
+    if (!tpl.startOn?.when || !/^https?:/.test(this.page.url())) return false;
+    return (await this.cond(tpl.startOn.when, scope).catch(() => ({ pass: false }))).pass;
+  }
+
+  /**
+   * startOn: a recipe is a fragment that may be called in the middle of a task, on a page the browser already shows.
+   * If the page fits `when`, start right here; else open `goto`; else fail with START_PAGE_MISMATCH.
+   */
+  async applyStartOn(tpl: any, scope: Scope, prefix: string) {
+    const so = tpl.startOn;
+    if (!so) return;
+    const p = prefix ? `${prefix}._start-on` : '_start-on';
+    const seq = this.rec.nextSeq();
+    const started = Date.now();
+    const urlBefore = this.page.url();
+    this.rec.events.emit('step.start', { step: seq, path: p, stepId: '_start-on', action: 'startOn', url: urlBefore });
+    const record = (status: 'ok' | 'failed', expect: any, extra: any = {}) =>
+      this.rec.step({ seq, stepId: '_start-on', path: p, action: 'startOn', status, startedAt: new Date(started).toISOString(), durationMs: Date.now() - started, urlBefore, urlAfter: this.page.url(), locator: null, expect, attempts: 1, output: null, artifacts: [], ...extra });
+    let r = /^https?:/.test(urlBefore) ? await this.waitCond(so.when, scope, 1500) : { pass: false, why: 'no page open yet' };
+    if (r.pass) {
+      record('ok', { result: 'pass', why: r.why }, { note: 'already on the start page' });
+      log.info(`  ✓ ${p}: already on the start page, starting here (${urlBefore})`);
+      return;
+    }
+    try {
+      if (!so.goto) throw new RpaError('START_PAGE_MISMATCH', `recipe "${tpl.id}" must start on a page where ${r.why}, but the browser is on ${urlBefore}. Run the fragment that leads there first (or give the recipe startOn.goto).`);
+      const url = String(render(so.goto, scope));
+      this.checkSite(url);
+      await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: Math.max(this.timeout, 30000) });
+      r = await this.waitCond(so.when, scope, this.timeout);
+      if (!r.pass) throw new RpaError('START_PAGE_MISMATCH', `opened ${url} for recipe "${tpl.id}", but its start condition is not met: ${r.why}`);
+    } catch (e: any) {
+      const err = normalizeError(e);
+      record('failed', { result: 'fail', why: r.why }, { error: { code: err.code, message: err.message, category: errorCategory(err.code) } });
+      throw new StepFailure(err, '_start-on', p);
+    }
+    record('ok', { result: 'pass', why: r.why }, { note: `opened ${so.goto}` });
+    log.info(`  ✓ ${p}: opened the start page`);
+  }
+
+  /** recipe step: run another recipe (a fragment) here, on the same page, in this run; returns its outputs. */
+  async runFragment(step: any, stepPath: string, scope: Scope, rec: StepRecord): Promise<any> {
+    const sub = resolveRecipe(String(render(step.recipe, scope)), this.cur.path);
+    const tpl = sub.template;
+    if (this.depth + 1 >= MAX_RECIPE_DEPTH) throw new RpaError('TEMPLATE_INVALID', `recipe calls are nested more than ${MAX_RECIPE_DEPTH} deep`);
+    const v = validateTemplate(tpl);
+    if (!v.ok) throw new RpaError('TEMPLATE_INVALID', `called recipe "${tpl.id}" is invalid: ` + v.errors.map((e) => `[${e.stepId ?? '-'}] ${e.message}`).join('; '));
+    const saved = this.resumeFrames[stepPath];
+    delete this.resumeFrames[stepPath];
+    const child: Scope = {
+      inputs: saved?.inputs ?? coerceInputs(tpl, step.inputs ? render(step.inputs, scope) : {}),
+      vars: saved?.vars ?? {},
+      account: scope.account,
+    };
+    for (const name of appendTargets(tpl.steps)) if (!Array.isArray(child.vars[name])) child.vars[name] = [];
+    this.frames[stepPath] = child;
+    rec.recipe = { id: tpl.id, version: tpl.version, path: sub.path };
+    rec.note = `${tpl.id}@${tpl.version}`;
+    this.rec.events.emit('recipe.enter', { path: stepPath, recipeId: tpl.id, recipeVersion: tpl.version, inputs: maskInputs(tpl, child.inputs), ...(saved ? { resumed: true } : {}) });
+    log.info(`  ▸ ${stepPath}: recipe ${tpl.id}@${tpl.version}`);
+    const prev = { cur: this.cur, site: this.site, timeout: this.timeout };
+    this.cur = { tpl, path: sub.path };
+    this.site = tpl.site || [];
+    this.timeout = tpl.defaults?.timeoutMs ?? 10000;
+    this.depth++;
+    try {
+      if (!saved) await this.applyStartOn(tpl, child, stepPath);
+      for (const st of tpl.steps) await this.execStep(st, `${stepPath}.${st.id}`, child);
+      const out = tpl.outputs ? render(tpl.outputs.from, child) : child.vars;
+      if (tpl.outputs?.schema) {
+        const errs = checkSchema(out, tpl.outputs.schema);
+        if (errs.length) throw new RpaError('OUTPUT_INVALID', `recipe "${tpl.id}": ${errs.join('; ')}`);
+      }
+      delete this.frames[stepPath];
+      return out;
+    } finally {
+      this.cur = prev.cur;
+      this.site = prev.site;
+      this.timeout = prev.timeout;
+      this.depth--;
+    }
   }
 
   async screenshot(name: string, rec?: StepRecord) {
@@ -471,11 +577,13 @@ export class Runner {
         writeJson(path.join(fdir, 'snapshot.refs.json'), snap.refs);
       }
     }
-    const tplPath = this.opts.loaded.path;
+    // a failure inside a called recipe points at that recipe: it is the file to patch
+    const tplPath = this.cur.path;
     const dossier = {
       runDir: this.rec.dir,
-      templateId: this.tpl.id,
-      templateVersion: this.tpl.version,
+      templateId: this.cur.tpl.id,
+      templateVersion: this.cur.tpl.version,
+      ...(this.cur.tpl !== this.tpl ? { calledFrom: { templateId: this.tpl.id, templatePath: this.opts.loaded.path } } : {}),
       templatePath: tplPath,
       failedStepId: step?.id ?? null,
       path: stepPath,
@@ -491,11 +599,11 @@ export class Runner {
       locatorDrift: locatorDrift(this.tpl.id),
       next:
         errorCategory(err.code) === 'env'
-          ? ['Environment problem: do not edit the template. Ask the human to fix login / captcha, then resume:', `browser-recipewright run "${tplPath}" --resume "${this.rec.dir}"`]
+          ? ['Environment problem: do not edit the template. Ask the human to fix login / captcha, then resume:', `browser-recipewright run "${this.opts.loaded.path}" --resume "${this.rec.dir}"`]
           : [
               '1. Read failure/snapshot.txt (refs in snapshot.refs.json give ready-made locator candidates).',
               `2. Write a patch for step "${step?.id ?? '?'}" only, then: browser-recipewright patch "${tplPath}" patch.json --write`,
-              `3. Verify from the failed top-level step: browser-recipewright run "${tplPath}" --resume "${this.rec.dir}"`,
+              `3. Verify from the failed top-level step: browser-recipewright run "${this.opts.loaded.path}" --resume "${this.rec.dir}"`,
             ],
     };
     writeJson(path.join(fdir, 'dossier.json'), dossier);
@@ -598,7 +706,7 @@ export class Runner {
       }
     }
 
-    const retries = step.retries ?? this.tpl.defaults?.retries ?? 0;
+    const retries = step.retries ?? this.cur.tpl.defaults?.retries ?? 0;
     const timeout = step.timeoutMs ?? this.timeout;
     let value: any;
     let lastErr: RpaError | null = null;
@@ -624,7 +732,7 @@ export class Runner {
           if (canRetry) {
             handoffUsed = true;
             try {
-              rec.handoffMs = await this.handoff(env.code === 'LOGIN_REQUIRED' ? '登录已失效，请在浏览器里重新登录' : '检测到验证码/风控页，请手动完成', env.code === 'CHALLENGE_DETECTED' ? { not: { urlMatches: 'captcha|challenge|account/access' } } : this.tpl.account?.loginCheck ?? null, env.code);
+              rec.handoffMs = await this.handoff(env.code === 'LOGIN_REQUIRED' ? '登录已失效，请在浏览器里重新登录' : '检测到验证码/风控页，请手动完成', env.code === 'CHALLENGE_DETECTED' ? { not: { urlMatches: 'captcha|challenge|account/access' } } : this.cur.tpl.account?.loginCheck ?? null, env.code);
               attempt--;
               continue;
             } catch (he: any) {
@@ -670,7 +778,7 @@ export class Runner {
     this.done.add(stepPath);
     log.info(`  ✓ ${stepPath} (${step.action}) ${rec.durationMs}ms${rec.locator?.hit > 0 ? ` [fallback locator #${rec.locator.hit}]` : ''}`);
     if (!['wait'].includes(step.action)) {
-      const gap = pickMs(this.tpl.defaults?.stepGapMs, 0);
+      const gap = pickMs(this.cur.tpl.defaults?.stepGapMs, 0);
       if (gap) await sleep(gap);
     }
     return value;
@@ -696,6 +804,8 @@ export class Runner {
           }
         }
       }
+      case 'recipe':
+        return this.runFragment(step, stepPath, scope, rec);
       case 'if': {
         let taken = this.resumeBranches[stepPath];
         if (taken) {
