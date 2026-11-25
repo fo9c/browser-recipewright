@@ -306,6 +306,21 @@
       "then": {
         "$ref": "#/$defs/run.resume"
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "recipe.enter"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/recipe.enter"
+      }
     }
   ],
   "$defs": {
@@ -848,6 +863,29 @@
       },
       "required": [
         "path"
+      ],
+      "additionalProperties": {}
+    },
+    "recipe.enter": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "recipeId": {
+          "type": "string"
+        },
+        "recipeVersion": {
+          "type": "string"
+        },
+        "type": {
+          "const": "recipe.enter"
+        }
+      },
+      "required": [
+        "path",
+        "recipeId",
+        "recipeVersion"
       ],
       "additionalProperties": {}
     }

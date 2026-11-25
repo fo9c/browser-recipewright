@@ -118,6 +118,7 @@ The rest of the fields depend on `type` and sit next to the envelope (no nesting
 | `ask.answered` | `step`✱ `path`✱ `stepId`✱ `source`✱ `value` `picked` `waitedMs` | The question got its answer. `source`: `agent` (via `answer`) or `default` (unattended run). `value` = preview of the stored answer; `picked` = the item numbers of a `pick` answer; `waitedMs` = time since `ask.start`. **This is "the AI decided here"** in a timeline. |
 | `run.pause` | `path`✱ `stepId`✱ `reason`✱ (`ask`) `ask` | The run stopped at a breakpoint. Last line for now; the browser stays on the page. |
 | `run.resume` | `path`✱ `stepId` `pausedMs` | The agent answered; the same file continues from here (`seq` and `ms` carry on). |
+| `recipe.enter` | `path`✱ `recipeId`✱ `recipeVersion`✱ `inputs` `resumed` | A `recipe` step starts running another recipe (a fragment) inside this run. Its steps follow with paths `<path>.<stepId>`; the `recipe` step's own `step.end` comes after them. A fragment's `startOn` check is a step with path `<path>._start-on` (`_start-on` for the top recipe). |
 
 Coordinates are CSS pixels relative to the top-left of the page viewport. `pointer.*` and `key.type` come from
 the human-like input layer, so they are present when `humanize` is on (the default); with `humanize: false`
@@ -168,6 +169,20 @@ browser-recipewright schema --run-events    # JSON Schema of one line (also in s
 ```
 
 A complete, dependency-free example plugin: [examples/viewer-plugin-minimal](../examples/viewer-plugin-minimal).
+
+### Task journal (live work across runs)
+
+When the agent works live it may run several recipes, single `act` steps and answers in one job. If it started a
+task (`browser-recipewright task start <name>`), each of them adds one line to
+`<data folder>/tasks/<name>/journal.jsonl` (`task.json` next to it holds `name`, `startedAt`, `endedAt`, `gapMs`):
+
+```json
+{"seq":3,"t":"2026-11-25T08:15:02.120Z","type":"run","templateId":"example.com/search-collect","status":"paused","runDir":"/…/runs/…","ask":{"step":"pick","question":"…"}}
+```
+
+`type`: `act` (`step`, `status`, `urlBefore`, `urlAfter`, `runDir`, `output`), `run` and `answer` (`templateId`,
+`templateVersion`, `inputs`, `status`, `runDir`, `ask` when it paused, `output`), `decision` (`text`, `data`: a judgment
+the agent noted). A viewer that wants the whole job reads the journal and opens each `runDir` as a normal run.
 
 ## 5. Versioning rules
 
