@@ -20,6 +20,13 @@ Machine-readable schema: `schema/template.v0.json` (or `browser-recipewright sch
 | `outputs` | no | `{ from: "{{vars.x}}", schema: {...} }` — final result, checked against a JSON Schema subset (type, required, properties, items, minItems, maxItems, enum) ⇒ `OUTPUT_INVALID` |
 | `provenance` | no | free-form; `patch` appends to `provenance.repairs` |
 
+### Fragments: `startOn` and `kind`
+
+- `startOn`: `{ "when": <condition>, "goto": "<url, may use inputs>" }`. Before step 1: if the current page meets
+  `when`, start here (an agent chaining fragments in one browser); else open `goto` and check again; else fail with
+  `START_PAGE_MISMATCH`. The login check also happens in place when `when` already holds.
+- `kind`: `"recipe"` (a fixed fragment) or `"flow"` (strings recipes and breakpoints together). Informational.
+
 ## Common step fields
 
 `id` (unique, `[a-zA-Z][a-zA-Z0-9_-]*`), `action`, `note`, `expect` (condition polled until true or timeout ⇒ `EXPECT_FAILED`), `timeoutMs`, `retries` (0–5), `optional` (template errors are recorded as `soft-failed` and the run continues; environment errors never are), `saveAs` (store the step result in `vars`), `appendTo` (add the step result to a list in `vars`: arrays are spread into it, so repeated pages build ONE flat list; `"appendTo": "all"` or `{"var": "all", "dedupeBy": "url"}` to skip items already in the list; the list starts as `[]`, so loop conditions may read it before the first append; a name cannot be both `saveAs` and `appendTo`), `screenshot` (true ⇒ screenshot after this step).
@@ -40,7 +47,7 @@ A list of candidates tried in order; the first that matches **exactly one visibl
 
 Modifiers on any candidate: `nth` (0-based, `-1` = last), `within` (a target to search inside), `visible` (default `true`), `frame` (CSS of an iframe), `exact`.
 
-## Actions (21 atomic + 4 control flow)
+## Actions (21 atomic + 5 control flow)
 
 | action | parameters | result (`saveAs`) |
 |---|---|---|
@@ -69,6 +76,11 @@ Modifiers on any candidate: `nth` (0-based, `-1` = last), `within` (a target to 
 | `forEach` | `in`, `as`, `do`, `max` (required), `continueOnError`, `collectFrom`, `flatten` | array built from `collectFrom`; with `flatten: true`, per-iteration arrays are joined into one list |
 | `while` | `when`, `do`, `maxIterations` (required) | – |
 | `group` | `steps` (retries / optional apply to the whole group) | – |
+| `recipe` | `recipe` (library id, file path, or `./x.json` next to this file), `inputs` | the called recipe's output (`outputs.from`, else its variables) |
+
+`recipe` runs another recipe on the same page, in the same run record: its own inputs, variables, `site`, defaults
+and `startOn`; its steps get paths like `visit.go-next`. Its `ask` steps pause the whole run as usual. Calls are
+checked by `validate` (recipe exists and is valid, required inputs given, no circles, at most 4 deep).
 
 All clicks and typing are trusted CDP input events. With `humanize` the mouse moves on a curved path to a jittered point, keys have variable delays, wheel scrolling is chunked. `click` first runs Playwright's actionability checks (visible, stable, enabled, not covered) ⇒ otherwise `ELEMENT_NOT_ACTIONABLE`.
 
@@ -148,6 +160,7 @@ failure/        dossier.json, screenshot.png, snapshot.txt, snapshot.refs.json  
 | `OUTPUT_INVALID` | template | fix field extraction |
 | `SCRIPT_REJECTED` | template | never bypass; human reviews the script |
 | `ASSERT_FAILED` / custom | template | as designed |
+| `START_PAGE_MISMATCH` | template | the fragment was started on the wrong page: run the one that leads there, or add `startOn.goto` |
 | `ASK_UNANSWERED` | template | an `ask` step needs a `default` for unattended runs, or run with `--on-ask pause` |
 | `ANSWER_INVALID` | – | your answer does not fit `answer.type`; the run stays paused, answer again |
 | `LOGIN_REQUIRED` | env | human logs in (`browser-recipewright login`) |

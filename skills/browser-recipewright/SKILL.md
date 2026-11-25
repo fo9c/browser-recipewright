@@ -5,9 +5,17 @@ description: Automate websites in a real Chrome with reusable, reviewable JSON w
 
 # browser-recipewright
 
-You drive websites through the `browser-recipewright` CLI. Do not click around ad hoc for repeatable work:
-**turn the task into a template (JSON), validate it, run it, and read the run record.**
-Templates are deterministic, cheap to replay, and a human can review them.
+You drive websites through the `browser-recipewright` CLI, like a practiced person would:
+- **Routine work runs as recipes** (JSON templates): fixed fragments such as "search and collect 30 posts" or
+  "open a post and read its comments". They replay with no model cost and a human can review them.
+- **Judgment stays with you.** Between fragments you read what came back and decide what to run next. Inside a
+  recipe, an `ask` step (breakpoint) stops and hands you the data to decide on.
+- **New situations you handle live** with `act` (one step at a time). Every input, by a recipe or by you, goes
+  through the same human-like mouse and keyboard layer and is recorded.
+- **What works becomes a recipe or a flow.** Record live work in a task, then `task draft` it (section 6).
+
+Repeatable work belongs in recipes: write, validate, run, read the run record. Do not redo a fixed sequence by
+hand every time.
 
 All commands print a JSON result on stdout and progress on stderr. Exit codes:
 `0` ok · `1` template/step problem (you may fix it) · `2` invalid input/template · `3` environment problem (login, captcha, browser — hand to the human, do not edit the template) · `4` paused at a breakpoint: **you** must decide and `answer` (section 4b).
@@ -140,7 +148,34 @@ Show the human the diff and the verified result. Typical fixes per code are in `
 
 A locator hit on a fallback candidate (`hit > 0` in steps.jsonl, `locatorDrift` in the dossier) is an early warning: suggest updating the first candidate before it breaks.
 
-## 6. Many accounts
+## 6. Working live: fragments, tasks and flows
+
+A recipe does not have to be a whole job. Keep recipes small and fixed, and chain them yourself in one browser:
+
+```bash
+browser-recipewright task start find-agent-posts --gap 2000-6000   # record this job; human-like pause between steps
+browser-recipewright launch -p example.com/main                     # one browser for the whole job (runs leave it open)
+browser-recipewright run example.com/search-collect -i keyword="AI agent" -p example.com/main   # fragment 1
+#   …read the output yourself, decide which posts matter…
+browser-recipewright task note "posts 2, 5 and 9 are really about agents" --data '[2,5,9]'
+browser-recipewright run example.com/read-post -i url="…" -p example.com/main                   # fragment 2, on the page it left
+browser-recipewright act click --ref r7 -p example.com/main                                     # an unexpected popup: handle it live
+browser-recipewright task show                                                                  # everything so far, in order
+```
+- Give each recipe a `startOn` (`{"when": <condition>, "goto": "…"}`): if the browser already shows the right page it
+  starts right there, otherwise it opens `goto`, otherwise it fails with `START_PAGE_MISMATCH` (run the fragment that
+  leads there first). A recipe without `startOn` runs from wherever the browser is.
+- `act recipe --step '{"recipe":"example.com/read-post","inputs":{…}}' -p …` runs a fragment as one live step.
+- When the same sequence has worked once or twice, save it:
+  `browser-recipewright task draft --param keyword="AI agent" -o flow.json`. Act steps become recipe steps, recipe runs
+  become `recipe` calls, your notes become `ask` breakpoints. Review the draft (ids, notes, `expect`, `startOn`, better
+  question formats such as `pick`), then `validate` and `save` it. Next time run the flow and only answer its questions.
+- A flow is a recipe with `"kind": "flow"` whose steps are mostly `{"action": "recipe", "recipe": "<id or ./file.json>",
+  "inputs": {…}, "saveAs": "x"}` and `ask` steps. `validate` checks the called recipes too. Everything runs in one
+  browser and one run record; a failure inside a called recipe points the dossier at that recipe.
+- `task end` stops recording. Without a current task nothing is journaled.
+
+## 7. Many accounts
 
 Write a `batch.json` (see `references/batch.md`) and run `browser-recipewright batch batch.json`. Each account uses its own profile and gets its own run record; expired logins are skipped and listed; `--resume <batchDir>` never repeats finished jobs. Keep spacing and daily caps conservative and remind the human that platforms forbid coordinated inauthentic activity.
 
