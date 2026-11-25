@@ -588,6 +588,7 @@ const SELFCHECK_LABELS: Record<string, string> = {
   'hover-tip': '悬停 / hover',
   'collect-rows': '滚动并批量提取 / scroll + extract',
   'enough-rows': '提取到全部 40 条 / got all rows',
+  'ask-pick': '断点：交给 Agent 判断（自检用默认答案）/ breakpoint (ask)',
   'read-report': '读取页面观察结果 / read report',
   'check-trusted': '输入都是可信事件 / trusted input',
   'check-mouse': '点击前有鼠标轨迹 / mouse path',
@@ -607,7 +608,7 @@ program
     log.info(`self-check page: ${srv.url}/selfcheck.html`);
     try {
       const loaded = loadTemplate('selfcheck/basic');
-      const res = await new Runner({ loaded, inputs: { base: srv.url }, profile: 'selfcheck/default', headless: o.headless, keepOpen: o.keepOpen, handoff: 'never' }).run();
+      const res = await new Runner({ loaded, inputs: { base: srv.url }, profile: 'selfcheck/default', headless: o.headless, keepOpen: o.keepOpen, handoff: 'never', onAsk: 'default' }).run();
       const steps = readSteps(res.runDir);
       const checks = Object.entries(SELFCHECK_LABELS).map(([id, label]) => {
         const s = steps.filter((x: any) => x.stepId === id).pop();
