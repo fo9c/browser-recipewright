@@ -3,6 +3,7 @@ import { ACTION_SCHEMAS, TemplateSchema, Target, PRIMARY_LOCATOR_KEYS, TARGET_AC
 import { findRefs, parseExpr, FILTERS } from './render.js';
 import { CONDITION_KEYS, conditionTargets } from './conditions.js';
 import { checkScript, hostMatches } from './scripts.js';
+import { coerceAnswer } from './ask.js';
 
 export interface Issue {
   level: 'error' | 'warning';
@@ -176,6 +177,27 @@ export function validateTemplate(tpl: any): ValidationResult {
         case 'handoff':
           if (s.until) checkCond(s.until, sid, `${p}.until`, roots);
           break;
+        case 'ask': {
+          const type = s.answer?.type ?? 'text';
+          if (type === 'choice' && !s.answer?.options) add('error', sid, `${p}.answer`, 'answer type "choice" needs "options"');
+          if (type !== 'choice' && s.answer?.options) add('warning', sid, `${p}.answer.options`, `"options" is only used by answer type "choice" (this one is "${type}")`);
+          if (type === 'pick' && s.data === undefined) add('error', sid, `${p}.data`, 'answer type "pick" needs "data" (the list to pick from)');
+          if (type === 'pick' && s.data !== undefined && !Array.isArray(s.data) && !(typeof s.data === 'string' && /^\{\{.*\}\}$/.test(s.data.trim())))
+            add('error', sid, `${p}.data`, 'answer type "pick" needs "data" to be a list, e.g. "{{vars.items}}"');
+          if (!s.saveAs) add('warning', sid, p, 'ask without saveAs: the answer is recorded but no later step can use it');
+          if (s.default !== undefined && findRefs(s.default).length === 0 && (type !== 'pick' || Array.isArray(s.data))) {
+            try {
+              coerceAnswer(s.answer, s.default, s.data);
+            } catch (e: any) {
+              add('error', sid, `${p}.default`, `default ${e.message.replace(/^answer /, '')}`);
+            }
+          }
+          break;
+        }
+        case 'recipe':
+          if (s.recipe === tpl.id) add('error', sid, `${p}.recipe`, 'a recipe cannot call itself');
+          if (s.inputs && (typeof s.inputs !== 'object' || Array.isArray(s.inputs))) add('error', sid, `${p}.inputs`, 'inputs must be an object');
+          break;
         case 'waitFor':
           if (!s.target && !s.url && !s.text && !s.until) add('error', sid, p, 'waitFor needs one of target / url / text / until');
           if (s.until) checkCond(s.until, sid, `${p}.until`, roots);
@@ -234,6 +256,20 @@ export function validateTemplate(tpl: any): ValidationResult {
   for (const v of appendTargets(tpl.steps)) declaredVars.add(v);
   walk(tpl.steps, 'steps', new Set());
   if (tpl.account?.loginCheck) checkCond(tpl.account.loginCheck, null, 'account.loginCheck', new Set());
+  if (tpl.startOn?.when) checkCond(tpl.startOn.when, null, 'startOn.when', new Set());
+  if (typeof tpl.startOn?.goto === 'string') {
+    checkRefs(tpl.startOn.goto, null, 'startOn.goto', new Set());
+    const u = tpl.startOn.goto;
+    if (!/^\{\{/.test(u)) {
+      try {
+        const host = new URL(u.replace(/\{\{[^}]*\}\}/g, '')).hostname;
+        if (!site.some((d) => hostMatches(host, d))) add('error', null, 'startOn.goto', `host "${host}" is not in site [${site.join(', ')}]`);
+      } catch {
+        add('error', null, 'startOn.goto', `not an absolute URL: ${u}`);
+      }
+    }
+  }
+  if (tpl.kind === 'flow' && !JSON.stringify(tpl.steps).match(/"action":"(recipe|ask)"/)) add('warning', null, 'kind', 'a flow usually calls recipes (action "recipe") and has breakpoints (action "ask")');
   if (tpl.outputs?.from) checkRefs(tpl.outputs.from, null, 'outputs.from', new Set());
   if (bigLoop && !hasGap) add('warning', null, 'defaults.stepGapMs', 'loops over 20 rounds with no step gap; add defaults.stepGapMs to avoid looking like a bot');
   return finish(issues);

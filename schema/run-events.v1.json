@@ -246,6 +246,81 @@
       "then": {
         "$ref": "#/$defs/artifact"
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ask.start"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/ask.start"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "ask.answered"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/ask.answered"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "run.pause"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/run.pause"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "run.resume"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/run.resume"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "recipe.enter"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/recipe.enter"
+      }
     }
   ],
   "$defs": {
@@ -453,7 +528,8 @@
             "ok",
             "failed",
             "soft-failed",
-            "skipped"
+            "skipped",
+            "paused"
           ]
         },
         "durationMs": {
@@ -682,6 +758,134 @@
       "required": [
         "path",
         "kind"
+      ],
+      "additionalProperties": {}
+    },
+    "ask.start": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "path": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "answerType": {
+          "type": "string"
+        },
+        "type": {
+          "const": "ask.start"
+        }
+      },
+      "required": [
+        "step",
+        "path",
+        "stepId",
+        "question",
+        "answerType"
+      ],
+      "additionalProperties": {}
+    },
+    "ask.answered": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "path": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "default"
+          ]
+        },
+        "type": {
+          "const": "ask.answered"
+        }
+      },
+      "required": [
+        "step",
+        "path",
+        "stepId",
+        "source"
+      ],
+      "additionalProperties": {}
+    },
+    "run.pause": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "stepId": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "const": "ask"
+        },
+        "type": {
+          "const": "run.pause"
+        }
+      },
+      "required": [
+        "path",
+        "stepId",
+        "reason"
+      ],
+      "additionalProperties": {}
+    },
+    "run.resume": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "type": {
+          "const": "run.resume"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "additionalProperties": {}
+    },
+    "recipe.enter": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "recipeId": {
+          "type": "string"
+        },
+        "recipeVersion": {
+          "type": "string"
+        },
+        "type": {
+          "const": "recipe.enter"
+        }
+      },
+      "required": [
+        "path",
+        "recipeId",
+        "recipeVersion"
       ],
       "additionalProperties": {}
     }

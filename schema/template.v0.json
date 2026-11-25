@@ -22,6 +22,13 @@
     "description": {
       "type": "string"
     },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "recipe",
+        "flow"
+      ]
+    },
     "tags": {
       "type": "array",
       "items": {
@@ -96,6 +103,25 @@
         ],
         "additionalProperties": false
       }
+    },
+    "startOn": {
+      "type": "object",
+      "properties": {
+        "when": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "goto": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "when"
+      ],
+      "additionalProperties": false
     },
     "defaults": {
       "type": "object",
@@ -2921,6 +2947,120 @@
       ],
       "additionalProperties": false
     },
+    "step_ask": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "ask"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "data": {},
+        "answer": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "text",
+                "number",
+                "boolean",
+                "choice",
+                "pick",
+                "json"
+              ]
+            },
+            "options": {
+              "minItems": 1,
+              "type": "array",
+              "items": {}
+            },
+            "min": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "max": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "schema": {},
+            "hint": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "default": {}
+      },
+      "required": [
+        "id",
+        "action",
+        "question"
+      ],
+      "additionalProperties": false
+    },
     "step_if": {
       "type": "object",
       "properties": {
@@ -3292,6 +3432,89 @@
       ],
       "additionalProperties": false
     },
+    "step_recipe": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+        },
+        "action": {
+          "const": "recipe"
+        },
+        "note": {
+          "type": "string"
+        },
+        "expect": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "optional": {
+          "type": "boolean"
+        },
+        "saveAs": {
+          "type": "string",
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "appendTo": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "var": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+                },
+                "dedupeBy": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "var"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "screenshot": {
+          "type": "boolean"
+        },
+        "recipe": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "id",
+        "action",
+        "recipe"
+      ],
+      "additionalProperties": false
+    },
     "step": {
       "oneOf": [
         {
@@ -3355,6 +3578,9 @@
           "$ref": "#/$defs/step_handoff"
         },
         {
+          "$ref": "#/$defs/step_ask"
+        },
+        {
           "$ref": "#/$defs/step_if"
         },
         {
@@ -3365,6 +3591,9 @@
         },
         {
           "$ref": "#/$defs/step_group"
+        },
+        {
+          "$ref": "#/$defs/step_recipe"
         }
       ]
     }

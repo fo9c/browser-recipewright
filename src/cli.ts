@@ -18,6 +18,10 @@ import { runBatch, usageToday } from './batch.js';
 import { buildJsonSchema } from './schema.js';
 import { checkRunDir, EVENTS_FILE, buildRunEventsJsonSchema } from './events.js';
 import { startDemoServer } from './demo.js';
+import { checkRecipeCalls } from './flow.js';
+import { startTask, endTask, currentTask, readJournal, listTasks, journal, taskRhythm, draftFromJournal, taskDir } from './task.js';
+import { preview as previewData } from './events.js';
+import { recordAnswer, listPending, readPendingAsk, parseAnswerValue, type PendingAsk } from './ask.js';
 import { readJson, writeJson, homeDir, dirs, log, sleep, RpaError, PKG_ROOT } from './util.js';
 
 const pkg = readJson(path.join(PKG_ROOT, 'package.json'));
@@ -55,10 +59,12 @@ function parseInputs(pairs: string[] = [], json?: string): Record<string, any> {
   return base;
 }
 
+/** Exit codes: 0 ok · 1 step/template problem · 2 invalid input/template · 3 environment (human needed) · 4 paused, the agent must answer */
 function exitCodeFor(code?: string) {
   if (!code) return 0;
+  if (code === 'ASK_PENDING') return 4;
   if (['LOGIN_REQUIRED', 'CHALLENGE_DETECTED', 'HANDOFF_REQUIRED', 'BROWSER_ERROR'].includes(code)) return 3;
-  if (['INPUT_INVALID', 'TEMPLATE_INVALID', 'TEMPLATE_NOT_FOUND', 'PATCH_INVALID', 'BATCH_INVALID'].includes(code)) return 2;
+  if (['INPUT_INVALID', 'TEMPLATE_INVALID', 'TEMPLATE_NOT_FOUND', 'PATCH_INVALID', 'BATCH_INVALID', 'ANSWER_INVALID'].includes(code)) return 2;
   return 1;
 }
 
@@ -263,7 +269,9 @@ program
     if (o.fields) step.fields = JSON.parse(o.fields);
     if (o.by) step.by = o.by === 'page' ? 'page' : Number(o.by);
     if (o.ms) step.ms = Number(o.ms);
+    await taskRhythm();
     const c = await connect(o.profile);
+    const urlBefore = c.page.url();
     try {
       if (!step.saveAs) step.saveAs = '_act_out';
       const tpl = { id: '_act', version: '0.0.0', title: 'act', site: ['*'], defaults: { humanize: o.humanize }, steps: [step] };
@@ -274,6 +282,7 @@ program
       const shot = rec?.artifacts?.find((a: string) => a.endsWith('.png'));
       const screenshot = shot ? path.join(res.runDir, shot) : fs.existsSync(path.join(res.runDir, 'failure', 'screenshot.png')) ? path.join(res.runDir, 'failure', 'screenshot.png') : null;
       if (step.saveAs === '_act_out') delete step.saveAs;
+      journal({ type: 'act', profile: o.profile, step, status: res.status, urlBefore, urlAfter: c.page.url(), runDir: res.runDir, error: res.error ?? null, output: previewData(value, 3, 300), endedAt: new Date().toISOString() });
       if (step.action === 'collect' && Array.isArray(value)) {
         // collect: lead with the items and a per-field fill report, so it is obvious what the fields extracted
         const fieldNames = Object.keys(step.fields || {});
@@ -315,6 +324,9 @@ program
   .action(wrap(async (ref) => {
     const { template, path: p } = loadTemplate(ref);
     const r = validateTemplate(template);
+    // a flow calls other recipes: check that they exist, are valid and get the inputs they need
+    for (const i of checkRecipeCalls(template, p)) (i.level === 'error' ? r.errors : r.warnings).push(i);
+    r.ok = r.errors.length === 0;
     for (const e of r.errors) log.info(`❌ [${e.stepId ?? '-'}] ${e.path}: ${e.message}`);
     for (const w of r.warnings) log.info(`⚠️  [${w.stepId ?? '-'}] ${w.path}: ${w.message}`);
     log.info(r.ok ? `✅ valid (${r.warnings.length} warning(s))` : `❌ ${r.errors.length} error(s)`);
@@ -335,17 +347,165 @@ program
   .option('--screenshots <mode>', 'failure | every | none')
   .option('--resume <runDir>', 'continue a failed or interrupted run: skips finished steps and finished forEach items (reuses saved variables)')
   .option('--handoff-timeout <min>', 'minutes to wait for a human', '15')
+  .option('--on-ask <mode>', 'ask steps (breakpoints): pause = stop and wait for the agent (default) · default = use the step default · fail', 'pause')
   .action(wrap(async (ref, o) => {
+    if (!['pause', 'default', 'fail'].includes(o.onAsk)) throw new RpaError('INPUT_INVALID', '--on-ask must be pause, default or fail');
     const loaded = loadTemplate(ref);
+    await taskRhythm();
     const runner = new Runner({
       loaded, inputs: parseInputs(o.input, o.inputs), profile: o.profile, headless: o.headless, keepOpen: o.keepOpen,
       handoff: o.handoff === false ? 'never' : 'auto', humanize: o.humanize === false ? false : undefined,
-      screenshots: o.screenshots, resumeFrom: o.resume, handoffTimeoutMs: Number(o.handoffTimeout) * 60000,
+      screenshots: o.screenshots, resumeFrom: o.resume, handoffTimeoutMs: Number(o.handoffTimeout) * 60000, onAsk: o.onAsk,
     });
-    const res = await runner.run();
-    const preview = Array.isArray(res.output) ? { count: res.output.length, first: res.output[0] } : res.output;
-    out({ status: res.status, runDir: res.runDir, output: res.outputPath, preview, error: res.error ?? null, dossier: res.dossier ?? null });
-    process.exitCode = exitCodeFor(res.error?.code);
+    printRunResult(await runner.run(), 'run');
+  }));
+
+/** The JSON a finished, failed or paused run prints. A paused run (exit code 4) carries the question for the agent. */
+function printRunResult(res: import('./engine.js').RunResult, kind: 'run' | 'answer') {
+  try {
+    const run = readJson(path.join(res.runDir, 'run.json'));
+    journal({
+      type: kind, templateId: run.templateId, templateVersion: run.templateVersion, templatePath: run.templatePath, profile: run.profile,
+      inputs: run.inputs, site: (() => { try { return loadTemplate(run.templatePath).template.site; } catch { return undefined; } })(),
+      status: res.status, runDir: res.runDir, error: res.error ?? null, ...(res.ask ? { ask: { step: res.ask.path, question: res.ask.question } } : {}),
+      output: res.status === 'success' ? previewData(res.output, 3, 300) : undefined, endedAt: new Date().toISOString(),
+    });
+  } catch {}
+  if (res.status === 'paused') {
+    out({ status: 'paused', runDir: res.runDir, ask: askForAgent(res.ask!), error: null });
+    process.exitCode = 4;
+    return;
+  }
+  const preview = Array.isArray(res.output) ? { count: res.output.length, first: res.output[0] } : res.output;
+  out({ status: res.status, runDir: res.runDir, output: res.outputPath, preview, error: res.error ?? null, dossier: res.dossier ?? null });
+  process.exitCode = exitCodeFor(res.error?.code);
+}
+
+/** What the agent needs to answer a question: the question, the answer format, the data (pick: numbered from 0). */
+function askForAgent(a: PendingAsk) {
+  const data = a.answer.type === 'pick' && Array.isArray(a.data) ? a.data.map((item, i) => ({ '#': i, ...(item && typeof item === 'object' && !Array.isArray(item) ? item : { value: item }) })) : a.data;
+  return {
+    step: a.path, question: a.question, answer: a.answer, ...(a.default !== undefined ? { default: a.default } : {}),
+    data, url: a.url, since: a.since, file: path.join(a.runDir, 'ask.json'), next: a.how,
+  };
+}
+
+// ---------------- breakpoints ----------------
+program
+  .command('answer [runDir]')
+  .description('answer the question a paused run asks (ask step), then continue that run in the same browser and run directory')
+  .option('-v, --value <answer>', 'the answer: JSON (e.g. [0,2], true, "text") or plain text')
+  .option('--value-file <file>', 'read the answer (JSON) from a file')
+  .option('--no-continue', 'only store the answer; continue later with: answer <runDir> --continue-only')
+  .option('--continue-only', 'continue with an answer stored before (no --value)')
+  .option('--keep-open', 'leave Chrome open when the run ends')
+  .option('--headless', 'if the browser has to be started again, start it without a window')
+  .option('--on-ask <mode>', 'what later ask steps in this run do: pause (default) · default · fail', 'pause')
+  .action(wrap(async (dir, o) => {
+    const runDir = dir ?? (() => {
+      const p = listPending();
+      if (!p.length) throw new RpaError('INPUT_INVALID', 'no run is waiting for an answer');
+      if (p.length > 1) throw new RpaError('INPUT_INVALID', `${p.length} runs are waiting for an answer; pass the run directory (see: browser-recipewright pending)`);
+      return p[0].runDir;
+    })();
+    const ask = readPendingAsk(runDir);
+    if (!o.continueOnly) {
+      if (o.value === undefined && !o.valueFile) throw new RpaError('INPUT_INVALID', 'give the answer with --value <answer> (or --value-file <file>)');
+      const raw = o.valueFile ? JSON.parse(fs.readFileSync(o.valueFile, 'utf8')) : parseAnswerValue(o.value);
+      const { value } = recordAnswer(runDir, raw);
+      log.info(`✓ answer stored for ${ask?.path}: ${JSON.stringify(value).slice(0, 200)}`);
+      if (o.continue === false) return out({ status: 'answered', runDir, step: ask?.path, value, next: `browser-recipewright answer "${runDir}" --continue-only` });
+    }
+    const run = readJson(path.join(runDir, 'run.json'));
+    let loaded;
+    try { loaded = loadTemplate(run.templatePath); } catch { loaded = loadTemplate(run.templateId); }
+    await taskRhythm();
+    const runner = new Runner({ loaded, continueRun: runDir, headless: o.headless, keepOpen: o.keepOpen, onAsk: o.onAsk, handoff: o.headless ? 'never' : 'auto' });
+    printRunResult(await runner.run(), 'answer');
+  }));
+
+program
+  .command('pending')
+  .description('list runs that are paused at a question (ask step) and wait for the agent')
+  .action(wrap(async () => {
+    const asks = listPending();
+    for (const a of asks) log.info(`⏸ ${a.since}  ${a.templateId}  ${a.path}: ${a.question}\n    ${a.runDir}`);
+    if (!asks.length) log.info('no run is waiting for an answer');
+    out({ status: 'ok', pending: asks.map((a) => ({ runDir: a.runDir, templateId: a.templateId, ...askForAgent(a) })) });
+  }));
+
+// ---------------- tasks (live work: one record, drafts, rhythm) ----------------
+const task = program.command('task').description('group live work (act, run, answer, your decisions) into one task record; turn it into a recipe / flow draft');
+
+task
+  .command('start <name>')
+  .description('start (or reopen) a task; from now on act / run / answer are recorded in it')
+  .option('--gap <ms>', 'random pause between steps of this task, e.g. 2000-6000 (human rhythm between fragments)')
+  .option('--note <text>', 'what the task is for')
+  .action(wrap(async (name, o) => {
+    let gapMs: any;
+    if (o.gap) {
+      const m = String(o.gap).match(/^(\d+)(?:-(\d+))?$/);
+      if (!m) throw new RpaError('INPUT_INVALID', '--gap expects milliseconds like 3000 or 2000-6000');
+      gapMs = m[2] ? [Number(m[1]), Number(m[2])] : Number(m[1]);
+    }
+    const t = startTask(name, { gapMs, note: o.note });
+    log.info(`▶ task "${t.name}" is current; act / run / answer are recorded in ${taskDir(t.name)}`);
+    out({ status: 'ok', task: t, dir: taskDir(t.name) });
+  }));
+
+task
+  .command('note <text>')
+  .description('record a decision you made (it becomes an ask breakpoint in a draft)')
+  .option('--data <json>', 'the data the decision was about (JSON)')
+  .action(wrap(async (text, o) => {
+    if (!currentTask()) throw new RpaError('INPUT_INVALID', 'no current task; start one with: browser-recipewright task start <name>');
+    const e = journal({ type: 'decision', text, ...(o.data ? { data: JSON.parse(o.data) } : {}) });
+    out({ status: 'ok', entry: e });
+  }));
+
+task
+  .command('show [name]')
+  .description('print the journal of a task (default: the current one)')
+  .action(wrap(async (name) => {
+    const n = name ?? currentTask()?.name;
+    if (!n) throw new RpaError('INPUT_INVALID', 'no current task; pass a name (see: browser-recipewright task list)');
+    const entries = readJournal(n);
+    for (const e of entries) log.info(`${String(e.seq).padStart(3)} ${e.type.padEnd(8)} ${e.type === 'act' ? `${e.step?.action} ${e.status}` : e.type === 'decision' ? e.text : `${e.templateId} ${e.status}${e.ask ? ` ⏸ ${e.ask.question}` : ''}`}`);
+    out({ status: 'ok', task: n, entries });
+  }));
+
+task
+  .command('list')
+  .description('list tasks')
+  .action(wrap(async () => out({ status: 'ok', tasks: listTasks() })));
+
+task
+  .command('end')
+  .description('stop recording into the current task')
+  .action(wrap(async () => out({ status: 'ok', ended: endTask() })));
+
+task
+  .command('draft [name]')
+  .description('turn a task journal into a recipe draft (act steps) or a flow draft (recipe runs → recipe steps, notes → ask breakpoints); prints validation')
+  .option('--from <seq>', 'first journal entry to use')
+  .option('--to <seq>', 'last journal entry to use')
+  .option('--id <id>', 'id of the draft (default draft/<task>)')
+  .option('--title <text>', 'title of the draft')
+  .option('--param <key=value>', 'turn a literal value into an input, e.g. --param keyword="AI agent" (repeatable)', collect, [])
+  .option('-o, --out <file>', 'where to write it (default: <task folder>/draft.json)')
+  .action(wrap(async (name, o) => {
+    const n = name ?? currentTask()?.name;
+    if (!n) throw new RpaError('INPUT_INVALID', 'no current task; pass a name (see: browser-recipewright task list)');
+    const params = parseInputs(o.param);
+    const r = draftFromJournal(n, { from: o.from ? Number(o.from) : undefined, to: o.to ? Number(o.to) : undefined, id: o.id, title: o.title, params });
+    const file = path.resolve(o.out || path.join(taskDir(n), 'draft.json'));
+    writeJson(file, r.template);
+    for (const e of r.validation.errors) log.info(`❌ [${e.stepId ?? '-'}] ${e.path}: ${e.message}`);
+    for (const w of r.validation.warnings) log.info(`⚠️  [${w.stepId ?? '-'}] ${w.path}: ${w.message}`);
+    log.info(`✎ ${r.template.kind} draft with ${r.template.steps.length} step(s) → ${file}`);
+    log.info('  next: review it (ids, notes, expect, startOn, inputs), then: browser-recipewright validate <file> && browser-recipewright save <file>');
+    out({ status: r.validation.ok ? 'ok' : 'invalid', file, kind: r.template.kind, steps: r.template.steps.length, skipped: r.skipped, errors: r.validation.errors, warnings: r.validation.warnings });
   }));
 
 program
@@ -381,7 +541,7 @@ program
   .option('-t, --template <id>', 'only this template')
   .action(wrap(async (o) => {
     const rs = listRuns(Number(o.limit), o.template);
-    for (const r of rs) log.info(`${r.status === 'success' ? '✓' : r.status === 'failed' ? '✗' : '…'} ${r.startedAt}  ${r.templateId}@${r.version}  ${r.error ?? ''}  ${r.runDir}`);
+    for (const r of rs) log.info(`${r.status === 'success' ? '✓' : r.status === 'failed' ? '✗' : r.status === 'paused' ? '⏸' : '…'} ${r.startedAt}  ${r.templateId}@${r.version}  ${r.error ?? ''}  ${r.runDir}`);
     out({ status: 'ok', runs: rs });
   }));
 
@@ -522,6 +682,7 @@ const SELFCHECK_LABELS: Record<string, string> = {
   'hover-tip': '悬停 / hover',
   'collect-rows': '滚动并批量提取 / scroll + extract',
   'enough-rows': '提取到全部 40 条 / got all rows',
+  'ask-pick': '断点：交给 Agent 判断（自检用默认答案）/ breakpoint (ask)',
   'read-report': '读取页面观察结果 / read report',
   'check-trusted': '输入都是可信事件 / trusted input',
   'check-mouse': '点击前有鼠标轨迹 / mouse path',
@@ -541,7 +702,7 @@ program
     log.info(`self-check page: ${srv.url}/selfcheck.html`);
     try {
       const loaded = loadTemplate('selfcheck/basic');
-      const res = await new Runner({ loaded, inputs: { base: srv.url }, profile: 'selfcheck/default', headless: o.headless, keepOpen: o.keepOpen, handoff: 'never' }).run();
+      const res = await new Runner({ loaded, inputs: { base: srv.url }, profile: 'selfcheck/default', headless: o.headless, keepOpen: o.keepOpen, handoff: 'never', onAsk: 'default' }).run();
       const steps = readSteps(res.runDir);
       const checks = Object.entries(SELFCHECK_LABELS).map(([id, label]) => {
         const s = steps.filter((x: any) => x.stepId === id).pop();

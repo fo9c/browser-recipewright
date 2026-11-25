@@ -1,0 +1,22 @@
+{
+  "id": "test/sc-next",
+  "version": "0.1.0",
+  "title": "Test fragment: from the self-check page, follow the link to page 2 and decide whether to come back",
+  "kind": "recipe",
+  "site": ["127.0.0.1", "localhost"],
+  "startOn": { "when": { "exists": [{ "testid": "sc-next" }] } },
+  "defaults": { "timeoutMs": 10000, "humanize": false },
+  "steps": [
+    {
+      "id": "go-next", "action": "click", "target": [{ "testid": "sc-next" }, { "role": "link", "name": "去第二页" }],
+      "expect": { "exists": [{ "testid": "sc-page2" }] }
+    },
+    { "id": "page2", "action": "read", "target": [{ "testid": "sc-page2" }, { "css": "h1" }], "saveAs": "page2" },
+    { "id": "come-back", "action": "ask", "question": "Go back to the list?", "answer": { "type": "boolean" }, "default": true, "saveAs": "back" },
+    {
+      "id": "maybe-back", "action": "if", "when": { "truthy": "{{vars.back}}" },
+      "then": [{ "id": "go-back", "action": "back", "expect": { "exists": [{ "testid": "sc-title" }] } }]
+    }
+  ],
+  "outputs": { "from": "{{vars.page2}}" }
+}

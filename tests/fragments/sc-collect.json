@@ -1,0 +1,21 @@
+{
+  "id": "test/sc-collect",
+  "version": "0.1.0",
+  "title": "Test fragment: collect rows from the self-check page",
+  "kind": "recipe",
+  "site": ["127.0.0.1", "localhost"],
+  "inputs": {
+    "base": { "type": "string" },
+    "count": { "type": "integer", "default": 5 }
+  },
+  "startOn": { "when": { "exists": [{ "testid": "sc-row" }] }, "goto": "{{inputs.base}}/selfcheck.html" },
+  "defaults": { "timeoutMs": 10000, "humanize": false },
+  "steps": [
+    {
+      "id": "rows", "action": "collect", "item": [{ "testid": "sc-row" }, { "css": "#list .row" }],
+      "fields": { "title": { "target": [{ "testid": "sc-row-title" }, { "css": "b" }], "text": true } },
+      "dedupeBy": "title", "limit": "{{inputs.count}}", "maxScrolls": 5, "saveAs": "rows"
+    }
+  ],
+  "outputs": { "from": "{{vars.rows}}", "schema": { "type": "array", "minItems": 1 } }
+}

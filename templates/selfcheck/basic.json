@@ -3,7 +3,7 @@
   "id": "selfcheck/basic",
   "version": "0.1.0",
   "title": "Self-check: exercise every core browser action on the bundled local page",
-  "description": "Runs against demo-site/selfcheck.html (served locally by `browser-recipewright selfcheck`). Types, selects, ticks, clicks, presses Enter, waits for a late element, hovers, scrolls a lazy list, extracts rows, navigates and goes back, then checks that all input was trusted and human-like. No network, no account.",
+  "description": "Runs against demo-site/selfcheck.html (served locally by `browser-recipewright selfcheck`). Types, selects, ticks, clicks, presses Enter, waits for a late element, hovers, scrolls a lazy list, extracts rows, stops at a breakpoint (ask; answered with its default here), navigates and goes back, then checks that all input was trusted and human-like. No network, no account.",
   "tags": ["selfcheck", "offline"],
   "site": ["127.0.0.1", "localhost"],
   "inputs": {
@@ -98,6 +98,23 @@
       "that": { "countEq": ["{{vars.rows}}", 40] },
       "code": "SELFCHECK_SCROLL",
       "message": "滚动加载没有拿到全部 40 条"
+    },
+    {
+      "id": "ask-pick",
+      "action": "ask",
+      "note": "断点：把数据交给调用它的 Agent 判断；自检时没人回答，用默认答案",
+      "question": "这 40 条里哪些值得打开？",
+      "data": "{{vars.rows}}",
+      "answer": { "type": "pick", "max": 5, "hint": "回答条目编号（从 0 开始），例如 [0, 2]" },
+      "default": [0, 2],
+      "saveAs": "picked"
+    },
+    {
+      "id": "check-picked",
+      "action": "assert",
+      "that": { "countEq": ["{{vars.picked}}", 2] },
+      "code": "SELFCHECK_ASK",
+      "message": "断点没有拿到默认答案"
     },
     {
       "id": "read-report",

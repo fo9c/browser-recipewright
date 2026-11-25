@@ -5,12 +5,20 @@ description: Automate websites in a real Chrome with reusable, reviewable JSON w
 
 # browser-recipewright
 
-You drive websites through the `browser-recipewright` CLI. Do not click around ad hoc for repeatable work:
-**turn the task into a template (JSON), validate it, run it, and read the run record.**
-Templates are deterministic, cheap to replay, and a human can review them.
+You drive websites through the `browser-recipewright` CLI, like a practiced person would:
+- **Routine work runs as recipes** (JSON templates): fixed fragments such as "search and collect 30 posts" or
+  "open a post and read its comments". They replay with no model cost and a human can review them.
+- **Judgment stays with you.** Between fragments you read what came back and decide what to run next. Inside a
+  recipe, an `ask` step (breakpoint) stops and hands you the data to decide on.
+- **New situations you handle live** with `act` (one step at a time). Every input, by a recipe or by you, goes
+  through the same human-like mouse and keyboard layer and is recorded.
+- **What works becomes a recipe or a flow.** Record live work in a task, then `task draft` it (section 6).
+
+Repeatable work belongs in recipes: write, validate, run, read the run record. Do not redo a fixed sequence by
+hand every time.
 
 All commands print a JSON result on stdout and progress on stderr. Exit codes:
-`0` ok · `1` template/step problem (you may fix it) · `2` invalid input/template · `3` environment problem (login, captcha, browser — hand to the human, do not edit the template).
+`0` ok · `1` template/step problem (you may fix it) · `2` invalid input/template · `3` environment problem (login, captcha, browser — hand to the human, do not edit the template) · `4` paused at a breakpoint: **you** must decide and `answer` (section 4b).
 
 If `browser-recipewright` is not on PATH, use `npx browser-recipewright` (or `node <repo>/bin/browser-recipewright.js`). Run `browser-recipewright doctor` once if anything looks broken, and `browser-recipewright selfcheck` to confirm clicks, typing, scrolling and extraction work on this machine (local test page, no network).
 
@@ -91,6 +99,31 @@ browser-recipewright run ./my-template.json --inputs '{"keyword":"rpa"}' --keep-
 - Result JSON: `status`, `runDir`, `output` (path to output.json), `preview`, `error`, `dossier`.
 - Save good templates: `browser-recipewright save ./my-template.json` (goes to `~/.browser-recipewright/templates`).
 
+## 4b. Breakpoints: the recipe asks you to decide
+
+A recipe can stop in the middle with an `ask` step when something needs judgment, not a rule: which posts are
+really relevant, is this reply spam, which of these buttons is the right one. The executor never calls a model;
+it hands the question to you. Exit code `4`, and the result looks like:
+
+```json
+{ "status": "paused", "runDir": "…", "ask": { "step": "pick-relevant", "question": "Which posts are about AI agents?",
+  "answer": { "type": "pick", "max": 10 }, "data": [ { "#": 0, "title": "…" }, { "#": 1, "title": "…" } ], "next": "browser-recipewright answer … --value '<JSON>'" } }
+```
+
+Read `data`, decide yourself, and answer in the given format; the browser is still on that page and the same run
+continues from that step (also inside loops), in the same run directory:
+
+```bash
+browser-recipewright answer <runDir> --value '[0, 3, 7]'   # pick: item numbers from 0 → the picked items are saved
+browser-recipewright answer <runDir> --value true          # boolean · "more" for choice · 5 for number · JSON for json
+browser-recipewright pending                               # every run waiting for an answer (after a restart, too)
+```
+- A wrong format is refused (`ANSWER_INVALID`, exit 2) and the run stays paused: answer again.
+- The answer may lead to another pause (exit 4 again): keep answering until `success` / `failed`.
+- Unattended runs (`batch`, `run --on-ask default`) use the step's `default`; give every `ask` a sensible one.
+- When writing a recipe, put an `ask` where you would otherwise need to stop the recipe and look at the data
+  yourself. Ask once with the whole list (`pick`) instead of once per item. See `references/template-format.md`.
+
 ## 5. When a run fails: repair ONE step
 
 ```bash
@@ -115,7 +148,34 @@ Show the human the diff and the verified result. Typical fixes per code are in `
 
 A locator hit on a fallback candidate (`hit > 0` in steps.jsonl, `locatorDrift` in the dossier) is an early warning: suggest updating the first candidate before it breaks.
 
-## 6. Many accounts
+## 6. Working live: fragments, tasks and flows
+
+A recipe does not have to be a whole job. Keep recipes small and fixed, and chain them yourself in one browser:
+
+```bash
+browser-recipewright task start find-agent-posts --gap 2000-6000   # record this job; human-like pause between steps
+browser-recipewright launch -p example.com/main                     # one browser for the whole job (runs leave it open)
+browser-recipewright run example.com/search-collect -i keyword="AI agent" -p example.com/main   # fragment 1
+#   …read the output yourself, decide which posts matter…
+browser-recipewright task note "posts 2, 5 and 9 are really about agents" --data '[2,5,9]'
+browser-recipewright run example.com/read-post -i url="…" -p example.com/main                   # fragment 2, on the page it left
+browser-recipewright act click --ref r7 -p example.com/main                                     # an unexpected popup: handle it live
+browser-recipewright task show                                                                  # everything so far, in order
+```
+- Give each recipe a `startOn` (`{"when": <condition>, "goto": "…"}`): if the browser already shows the right page it
+  starts right there, otherwise it opens `goto`, otherwise it fails with `START_PAGE_MISMATCH` (run the fragment that
+  leads there first). A recipe without `startOn` runs from wherever the browser is.
+- `act recipe --step '{"recipe":"example.com/read-post","inputs":{…}}' -p …` runs a fragment as one live step.
+- When the same sequence has worked once or twice, save it:
+  `browser-recipewright task draft --param keyword="AI agent" -o flow.json`. Act steps become recipe steps, recipe runs
+  become `recipe` calls, your notes become `ask` breakpoints. Review the draft (ids, notes, `expect`, `startOn`, better
+  question formats such as `pick`), then `validate` and `save` it. Next time run the flow and only answer its questions.
+- A flow is a recipe with `"kind": "flow"` whose steps are mostly `{"action": "recipe", "recipe": "<id or ./file.json>",
+  "inputs": {…}, "saveAs": "x"}` and `ask` steps. `validate` checks the called recipes too. Everything runs in one
+  browser and one run record; a failure inside a called recipe points the dossier at that recipe.
+- `task end` stops recording. Without a current task nothing is journaled.
+
+## 7. Many accounts
 
 Write a `batch.json` (see `references/batch.md`) and run `browser-recipewright batch batch.json`. Each account uses its own profile and gets its own run record; expired logins are skipped and listed; `--resume <batchDir>` never repeats finished jobs. Keep spacing and daily caps conservative and remind the human that platforms forbid coordinated inauthentic activity.
 

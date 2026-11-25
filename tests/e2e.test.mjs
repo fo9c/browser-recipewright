@@ -243,3 +243,152 @@ test('selfcheck: built-in recipe exercises every core action on the local page',
   assert.equal(r.json.observed.webdriver, 'false');
   assert.match(r.stderr, /自检通过/);
 });
+
+test('breakpoints: ask pauses (exit 4), answer continues the same run at that exact step, even inside a loop', { skip }, async () => {
+  const tpl = path.join(ROOT, 'tests', 'fixtures-ask.json');
+  const r = await cli('run', tpl, '-i', `base=${srv.url}`, '--headless', '-p', 'test/ask');
+  assert.equal(r.code, 4, r.stderr);
+  assert.equal(r.json.status, 'paused');
+  assert.equal(r.json.ask.step, 'pick');
+  assert.equal(r.json.ask.answer.type, 'pick');
+  assert.equal(r.json.ask.data.length, 6);
+  assert.equal(r.json.ask.data[2]['#'], 2);
+  const runDir = r.json.runDir;
+  // the browser stays open on the page while the agent thinks
+  assert.ok((await cli('sessions')).json.sessions.some((s) => s.profile === 'test/ask'));
+  const pend = await cli('pending');
+  assert.equal(pend.json.pending.length, 1);
+  assert.equal(pend.json.pending[0].runDir, runDir);
+  // a wrong answer is refused and the run stays paused
+  const bad = await cli('answer', runDir, '--value', '[9]');
+  assert.equal(bad.code, 2);
+  assert.equal(bad.json.error.code, 'ANSWER_INVALID');
+  // pick → stops again inside the loop
+  const a1 = await cli('answer', runDir, '--value', '[1,3]', '--headless');
+  assert.equal(a1.code, 4, a1.stderr);
+  assert.equal(a1.json.runDir, runDir);
+  assert.equal(a1.json.ask.step, 'each[0].keep');
+  assert.equal(a1.json.ask.question, 'Keep 条目 2?');
+  const a2 = await cli('answer', runDir, '--value', 'yes', '--headless');
+  assert.equal(a2.json.ask.step, 'each[1].keep', a2.stderr);
+  assert.match(a2.stderr, /each\[0\]\.heading \(read\) already done before the pause/);
+  const a3 = await cli('answer', runDir, '--value', 'false', '--headless');
+  assert.equal(a3.json.ask.step, 'maybe.confirm', a3.stderr);
+  const a4 = await cli('answer', runDir, '--value', 'more', '--headless');
+  assert.equal(a4.code, 0, a4.stderr);
+  assert.equal(a4.json.status, 'success');
+  const out = JSON.parse(fs.readFileSync(path.join(runDir, 'output.json'), 'utf8'));
+  assert.deepEqual(out.map((x) => [x.title, x.keep]), [['条目 2', true], ['条目 4', false]]);
+  // the value read before the pause in the same round survived the pause
+  for (const x of out) assert.equal(x.heading, 'browser-recipewright 自检页');
+  const state = JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8'));
+  assert.equal(state.vars.decision, 'more');
+  // one run directory, one record: finished steps were not repeated, every pause has a resume
+  const steps = fs.readFileSync(path.join(runDir, 'steps.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.equal(steps.filter((s) => s.path === 'each[0].heading').length, 1);
+  assert.equal(steps.filter((s) => s.path === 'rows').length, 1);
+  assert.equal(steps.filter((s) => s.stepId === 'keep' && s.answeredBy === 'agent').length, 2);
+  const chk = await cli('check-run', runDir);
+  assert.equal(chk.json.status, 'ok', chk.stderr);
+  assert.equal(chk.json.finished, true);
+  const types = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).type);
+  assert.equal(types.filter((t) => t === 'run.pause').length, 4);
+  assert.equal(types.filter((t) => t === 'run.resume').length, 4);
+  assert.equal(types.filter((t) => t === 'ask.answered').length, 4);
+  assert.equal(types.at(-1), 'run.end');
+  assert.equal((await cli('pending')).json.pending.length, 0);
+  // the run started the browser and nobody asked to keep it: it is closed at the real end
+  assert.ok(!(await cli('sessions')).json.sessions.some((s) => s.profile === 'test/ask'));
+});
+
+test('breakpoints: unattended runs use the default answer, or fail with ASK_UNANSWERED', { skip }, async () => {
+  const tpl = path.join(ROOT, 'tests', 'fixtures-ask.json');
+  const d = await cli('run', tpl, '-i', `base=${srv.url}`, '--headless', '-p', 'test/ask', '--on-ask', 'default');
+  assert.equal(d.json.status, 'success', d.stderr);
+  const out = JSON.parse(fs.readFileSync(d.json.output, 'utf8'));
+  assert.deepEqual(out.map((x) => x.title), ['条目 1', '条目 2']);
+  const f = await cli('run', tpl, '-i', `base=${srv.url}`, '--headless', '-p', 'test/ask', '--on-ask', 'fail');
+  assert.equal(f.code, 1);
+  assert.equal(f.json.error.code, 'ASK_UNANSWERED');
+});
+
+test('fragments: a recipe starts on the page the browser already shows (startOn), or refuses the wrong page', { skip }, async () => {
+  const next = path.join(ROOT, 'tests', 'fragments', 'sc-next.json');
+  assert.equal((await cli('launch', '--headless', '-p', 'test/chain', '--url', `${srv.url}/selfcheck.html`)).json.status, 'ok');
+  const r = await cli('run', next, '-p', 'test/chain', '--on-ask', 'default');
+  assert.equal(r.json.status, 'success', r.stderr);
+  assert.match(r.stderr, /_start-on: already on the start page/);
+  assert.equal(JSON.parse(fs.readFileSync(r.json.output, 'utf8')), '自检第二页');
+  // the agent moves the browser somewhere else; the fragment notices it is not on its start page
+  assert.equal((await cli('act', 'goto', '--url', `${srv.url}/selfcheck-next.html`, '-p', 'test/chain')).json.status, 'success');
+  const bad = await cli('run', next, '-p', 'test/chain', '--on-ask', 'default');
+  assert.equal(bad.code, 1);
+  assert.equal(bad.json.error.code, 'START_PAGE_MISMATCH');
+  // the browser was started by launch, so runs leave it open for the next fragment
+  assert.ok((await cli('sessions')).json.sessions.some((s) => s.profile === 'test/chain'));
+  await cli('close', '-p', 'test/chain');
+});
+
+test('flows: recipe steps call fragments in one browser and one record, with breakpoints in and between them', { skip }, async () => {
+  const flow = path.join(ROOT, 'tests', 'fragments', 'flow.json');
+  const v = await cli('validate', flow);
+  assert.equal(v.json.status, 'ok', v.stderr);
+  const r = await cli('run', flow, '-i', `base=${srv.url}`, '--headless', '-p', 'test/flow');
+  assert.equal(r.code, 4, r.stderr);
+  assert.equal(r.json.ask.step, 'pick');
+  assert.equal(r.json.ask.data.length, 4);
+  const runDir = r.json.runDir;
+  const a1 = await cli('answer', runDir, '--value', '[1,2]', '--headless');
+  assert.equal(a1.json.ask.step, 'visit.come-back', a1.stderr);
+  assert.match(a1.stderr, /visit\._start-on: already on the start page/);
+  const a2 = await cli('answer', runDir, '--value', 'false', '--headless');
+  assert.equal(a2.json.status, 'success', a2.stderr);
+  assert.match(a2.stderr, /visit\.page2 \(read\) already done before the pause/);
+  // stayed on page 2, so the next fragment opened its own start page
+  assert.match(a2.stderr, /again\._start-on: opened the start page/);
+  const state = JSON.parse(fs.readFileSync(path.join(runDir, 'state.json'), 'utf8'));
+  assert.equal(state.vars.page2, '自检第二页');
+  assert.equal(state.vars.rows2.length, 2);
+  assert.deepEqual(state.vars.picked.map((x) => x.title), ['条目 2', '条目 3']);
+  const steps = fs.readFileSync(path.join(runDir, 'steps.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
+  assert.ok(steps.find((s) => s.path === 'collect.rows' && s.status === 'ok'));
+  assert.ok(steps.find((s) => s.path === 'visit' && s.recipe?.id === 'test/sc-next' && s.status === 'ok'));
+  assert.equal(steps.filter((s) => s.path === 'visit.go-next').length, 1);
+  const chk = await cli('check-run', runDir);
+  assert.equal(chk.json.status, 'ok', chk.stderr);
+  const types = fs.readFileSync(path.join(runDir, 'events.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l).type);
+  assert.equal(types.filter((t) => t === 'recipe.enter').length, 4); // collect, visit, visit again after the pause, again
+});
+
+test('tasks: act / run / notes go into one journal; task draft turns them into a flow that runs', { skip }, async () => {
+  assert.equal((await cli('task', 'start', 'e2e-task', '--gap', '100-200')).json.status, 'ok');
+  try {
+    await cli('launch', '--headless', '-p', 'test/task');
+    assert.equal((await cli('act', 'goto', '--url', `${srv.url}/selfcheck.html`, '-p', 'test/task')).json.status, 'success');
+    assert.equal((await cli('act', 'type', '--target', '[{"testid":"sc-search"},{"placeholder":"输入后按回车"}]', '--text', 'self check', '-p', 'test/task')).json.status, 'success');
+    assert.equal((await cli('task', 'note', 'rows 2 and 4 look relevant')).json.status, 'ok');
+    const run = await cli('run', path.join(ROOT, 'tests', 'fragments', 'sc-collect.json'), '-i', `base=${srv.url}`, '-i', 'count=3', '-p', 'test/task');
+    assert.equal(run.json.status, 'success', run.stderr);
+    const show = await cli('task', 'show');
+    assert.deepEqual(show.json.entries.map((e) => e.type), ['act', 'act', 'decision', 'run']);
+    assert.ok(show.json.entries[3].runDir);
+    const d = await cli('task', 'draft', '--param', 'q=self check', '--param', `base=${srv.url}`, '-o', path.join(HOME, 'draft.json'));
+    assert.equal(d.json.status, 'ok', d.stderr);
+    assert.equal(d.json.kind, 'flow');
+    const draft = JSON.parse(fs.readFileSync(path.join(HOME, 'draft.json'), 'utf8'));
+    assert.deepEqual(draft.steps.map((s) => s.action), ['goto', 'type', 'ask', 'recipe']);
+    assert.equal(draft.steps[1].text, '{{inputs.q}}');
+    assert.equal(draft.steps[0].url, '{{inputs.base}}/selfcheck.html');
+    assert.equal(draft.steps[3].inputs.base, '{{inputs.base}}');
+    assert.equal(draft.provenance.fromTask, 'e2e-task');
+    // the draft runs: it stops at the decision you made by hand, and goes on with your answer
+    const r = await cli('run', path.join(HOME, 'draft.json'), '-p', 'test/task');
+    assert.equal(r.code, 4, r.stderr);
+    assert.equal(r.json.ask.question, 'rows 2 and 4 look relevant');
+    const a = await cli('answer', r.json.runDir, '--value', 'ok');
+    assert.equal(a.json.status, 'success', a.stderr);
+  } finally {
+    await cli('task', 'end');
+    await cli('close', '-p', 'test/task');
+  }
+});

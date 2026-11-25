@@ -8,6 +8,14 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 ## [Unreleased]
 
 ### Added
+- **断点（`ask` 步骤）**：配方可以在中途停下，把问题和数据交给调用它的 Agent 判断（例如"这 30 条帖子里哪些真正相关"），浏览器停在原页面。`run` 以退出码 `4` 结束并打印问题；Agent 用 `browser-recipewright answer <runDir> --value ...` 回答后，同一次运行从这一步接着跑（循环、`if`、`group` 内部也行），记录写在同一个运行目录里。执行器自己从不调用模型。答案格式：`text` `number` `boolean` `choice` `pick`（从列表里挑编号）`json`。
+- `browser-recipewright pending`：列出所有停在断点、等待回答的运行。
+- `run --on-ask pause|default|fail`；`batch` 和 `selfcheck` 无人值守，断点使用步骤的 `default`（`batch.json` 可设 `"onAsk": "fail"`）。
+- **片段编排**：配方可以写 `startOn`（`when` + 可选 `goto`），浏览器已经在对的页面时就地开始，所以 Agent 能在同一个浏览器里连续调用多个配方，边看结果边决定下一步；不在对的页面时打开 `goto` 或报 `START_PAGE_MISMATCH`。
+- **flow**：新增 `recipe` 步骤，在同一个浏览器、同一份运行记录里调用另一个配方（片段）；flow 就是由 `recipe` 调用和 `ask` 断点组成的配方（`"kind": "flow"`）。`validate` 会检查被调用的配方是否存在、有效、输入齐全、没有循环调用。
+- **任务记录**：`task start/note/show/list/end`。任务进行中，每次 `act`、`run`、`answer` 和 Agent 记下的判断都写进同一份 `journal.jsonl`；`--gap` 让片段之间有随机停顿。`task draft` 把这些记录整理成配方或 flow 草稿（act → 步骤，配方运行 → `recipe` 调用，判断 → `ask` 断点，`--param` 把固定值变成输入）。
+- 运行数据格式 v1 新增（向后兼容）：`recipe.enter` 事件；任务记录 `tasks/<name>/journal.jsonl`。
+- 运行数据格式 v1 新增（向后兼容）：`ask.start`、`ask.answered`、`run.pause`、`run.resume` 事件，步骤状态 `paused`，运行状态 `paused`，以及暂停期间的 `ask.json`。
 - `browser-recipewright selfcheck`：在自带的本地测试页上用内置配方 `selfcheck/basic` 跑一遍所有核心浏览器操作（输入、选择、勾选、点击、按键、等待、悬停、滚动提取、跳转、返回），并检查输入是否可信、拟人。每项一行通过 / 失败。
 
 ### Changed

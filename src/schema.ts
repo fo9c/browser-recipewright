@@ -4,6 +4,7 @@
  * friendlier, step-addressed messages than a big recursive union would.
  */
 import { z } from 'zod';
+import { ANSWER_TYPES } from './ask.js';
 
 const ms = z.union([z.number().int().nonnegative(), z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()])]);
 const tmplNum = z.union([z.number(), z.string()]); // number or "{{inputs.count}}"
@@ -114,6 +115,22 @@ export const ACTION_SCHEMAS: Record<string, z.ZodTypeAny> = {
   runScript: s({ script: z.string(), args: z.any().optional() }),
   assert: s({ that: Cond, code: z.string().optional(), message: z.string().optional() }),
   handoff: s({ reason: z.string(), until: Cond.optional() }),
+  // breakpoint: pause, hand question + data to the calling agent, continue with its answer (see ask.ts)
+  ask: s({
+    question: z.string().min(1),
+    data: z.any().optional(),
+    answer: z
+      .strictObject({
+        type: z.enum(ANSWER_TYPES).optional(),
+        options: z.array(z.any()).min(1).optional(),
+        min: z.number().int().min(0).optional(),
+        max: z.number().int().min(1).optional(),
+        schema: z.any().optional(),
+        hint: z.string().optional(),
+      })
+      .optional(),
+    default: z.any().optional(),
+  }),
   if: s({ when: Cond, then: Steps, else: Steps.optional() }),
   forEach: s({
     in: z.union([z.string(), z.array(z.any())]),
@@ -126,9 +143,11 @@ export const ACTION_SCHEMAS: Record<string, z.ZodTypeAny> = {
   }),
   while: s({ when: Cond, do: Steps, maxIterations: z.number().int().min(1).max(10000) }),
   group: s({ steps: Steps }),
+  // run another recipe (a fragment) on the same page, in the same run: flows are recipes made of these + ask steps
+  recipe: s({ recipe: z.string().min(1), inputs: z.record(z.string(), z.any()).optional() }),
 };
 
-export const ATOMIC_ACTIONS = Object.keys(ACTION_SCHEMAS).filter((a) => !['if', 'forEach', 'while', 'group'].includes(a));
+export const ATOMIC_ACTIONS = Object.keys(ACTION_SCHEMAS).filter((a) => !['if', 'forEach', 'while', 'group', 'recipe'].includes(a));
 export const TARGET_ACTIONS = ['click', 'fill', 'type', 'hover', 'select', 'check', 'upload', 'read', 'queryAll'];
 
 export const InputDef = z.strictObject({
@@ -146,6 +165,8 @@ export const TemplateSchema = z.strictObject({
   version: z.string().regex(/^\d+\.\d+\.\d+$/, 'semver like 0.1.0'),
   title: z.string().min(1),
   description: z.string().optional(),
+  /** "recipe": one fixed fragment of work · "flow": strings recipes and breakpoints together (informational) */
+  kind: z.enum(['recipe', 'flow']).optional(),
   tags: z.array(z.string()).optional(),
   site: z.array(z.string()).min(1),
   account: z
@@ -157,6 +178,11 @@ export const TemplateSchema = z.strictObject({
     })
     .optional(),
   inputs: z.record(z.string(), InputDef).optional(),
+  /**
+   * Where this fragment starts. If the browser already satisfies `when`, the recipe starts right there (an agent
+   * chaining fragments in one browser); otherwise it opens `goto` first, or fails with START_PAGE_MISMATCH.
+   */
+  startOn: z.strictObject({ when: Cond, goto: z.string().optional() }).optional(),
   defaults: z
     .strictObject({
       timeoutMs: z.number().int().positive().optional(),

@@ -10,6 +10,8 @@ import { coerceInputs, postFields } from '../dist/engine.js';
 import { parseCsv, planJobs } from '../dist/batch.js';
 import { checkSchema } from '../dist/jsonschema.js';
 import { buildJsonSchema } from '../dist/schema.js';
+import { coerceAnswer } from '../dist/ask.js';
+import { checkRecipeCalls } from '../dist/flow.js';
 
 const load = (p) => JSON.parse(fs.readFileSync(new URL(p, import.meta.url)));
 
@@ -215,4 +217,59 @@ test('run data format: unknown event types and extra fields are allowed (forward
   } finally {
     fs.rmSync(base, { recursive: true, force: true });
   }
+});
+
+test('ask: answers are checked and converted by their format', () => {
+  assert.equal(coerceAnswer(undefined, 'hi'), 'hi');
+  assert.equal(coerceAnswer({ type: 'number' }, '3.5'), 3.5);
+  assert.equal(coerceAnswer({ type: 'boolean' }, 'yes'), true);
+  assert.equal(coerceAnswer({ type: 'boolean' }, '否'), false);
+  assert.equal(coerceAnswer({ type: 'choice', options: ['a', 'b'] }, 'b'), 'b');
+  const data = [{ t: 'x' }, { t: 'y' }, { t: 'z' }];
+  assert.deepEqual(coerceAnswer({ type: 'pick' }, [2, 0, 2], data), [{ t: 'x' }, { t: 'z' }]);
+  assert.deepEqual(coerceAnswer({ type: 'pick' }, '1, 2', data), [{ t: 'y' }, { t: 'z' }]);
+  assert.deepEqual(coerceAnswer({ type: 'pick' }, [], data), []);
+  assert.deepEqual(coerceAnswer({ type: 'json', schema: { type: 'object', required: ['a'] } }, { a: 1 }), { a: 1 });
+  const bad = (spec, v, d) => assert.throws(() => coerceAnswer(spec, v, d), (e) => e.code === 'ANSWER_INVALID');
+  bad({ type: 'number' }, 'abc');
+  bad({ type: 'boolean' }, 'maybe');
+  bad({ type: 'choice', options: ['a'] }, 'c');
+  bad({ type: 'pick' }, [3], data);
+  bad({ type: 'pick', max: 1 }, [0, 1], data);
+  bad({ type: 'pick', min: 1 }, [], data);
+  bad({ type: 'pick' }, [0], 'not a list');
+  bad({ type: 'json', schema: { type: 'array' } }, { a: 1 });
+});
+
+test('ask: validate checks the answer format, pick data and defaults', () => {
+  const tpl = (step) => ({ id: 't/ask', version: '0.1.0', title: 't', site: ['example.com'], steps: [{ id: 'list', action: 'wait', ms: 1, saveAs: 'items' }, step] });
+  const errs = (step) => validateTemplate(tpl(step)).errors.map((e) => e.message).join('\n');
+  const warns = (step) => validateTemplate(tpl(step)).warnings.map((e) => e.message).join('\n');
+  assert.equal(errs({ id: 'q', action: 'ask', question: 'ok?', answer: { type: 'boolean' }, default: true, saveAs: 'ok' }), '');
+  assert.match(errs({ id: 'q', action: 'ask', question: 'which?', answer: { type: 'choice' }, saveAs: 'c' }), /needs "options"/);
+  assert.match(errs({ id: 'q', action: 'ask', question: 'which?', answer: { type: 'pick' }, saveAs: 'c' }), /needs "data"/);
+  assert.match(errs({ id: 'q', action: 'ask', question: 'which?', answer: { type: 'pick' }, data: 'abc', saveAs: 'c' }), /to be a list/);
+  assert.equal(errs({ id: 'q', action: 'ask', question: 'which?', answer: { type: 'pick' }, data: '{{vars.items}}', default: [0], saveAs: 'c' }), '');
+  assert.match(errs({ id: 'q', action: 'ask', question: 'n?', answer: { type: 'number' }, default: 'many', saveAs: 'n' }), /default .*expected a number/);
+  assert.match(errs({ id: 'q', action: 'ask', question: '{{vars.nope}}?', saveAs: 'n' }), /variable "nope" is not produced/);
+  assert.match(errs({ id: 'q', action: 'ask', question: 'x', answer: { type: 'guess' } }), /type/);
+  assert.match(warns({ id: 'q', action: 'ask', question: 'x' }), /ask without saveAs/);
+  assert.equal(validateTemplate(load('./fixtures-ask.json')).ok, true);
+});
+
+test('flows: recipe calls are checked (exists, inputs, circles) and startOn is validated', () => {
+  const from = new URL('./fragments/flow.json', import.meta.url).pathname;
+  const flow = (steps) => ({ id: 't/flow', version: '0.1.0', title: 't', kind: 'flow', site: ['127.0.0.1'], steps });
+  assert.deepEqual(checkRecipeCalls(load('./fragments/flow.json'), from).filter((i) => i.level === 'error'), []);
+  const msgs = (steps) => checkRecipeCalls(flow(steps), from).map((i) => i.message).join('\n');
+  assert.match(msgs([{ id: 'a', action: 'recipe', recipe: './nope.json' }]), /not found/);
+  assert.match(msgs([{ id: 'a', action: 'recipe', recipe: './sc-collect.json' }]), /needs input "base"/);
+  assert.match(msgs([{ id: 'a', action: 'recipe', recipe: './sc-collect.json', inputs: { base: 'x', color: 1 } }]), /has no input "color"/);
+  const circle = { ...flow([{ id: 'a', action: 'recipe', recipe: './flow.json', inputs: { base: 'x' } }]), id: 'test/flow' };
+  assert.match(checkRecipeCalls(circle, from).map((i) => i.message).join('\n'), /circle: test\/flow → test\/flow/);
+  assert.equal(validateTemplate(flow([{ id: 'a', action: 'recipe', recipe: 't/flow' }])).ok, false);
+  const so = (startOn) => validateTemplate({ id: 't/x', version: '0.1.0', title: 't', site: ['example.com'], startOn, steps: [{ id: 'w', action: 'wait', ms: 1 }] });
+  assert.equal(so({ when: { urlContains: '/search' }, goto: 'https://example.com/search' }).ok, true);
+  assert.match(JSON.stringify(so({ when: { urlContains: '/s' }, goto: 'https://evil.com/' }).errors), /not in site/);
+  assert.match(JSON.stringify(so({ when: { bogus: 1 } }).errors), /unknown condition/);
 });

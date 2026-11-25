@@ -1,0 +1,145 @@
+{
+  "id": "test/ask",
+  "version": "0.1.0",
+  "title": "Test: breakpoints (ask) before and inside a loop",
+  "site": [
+    "127.0.0.1",
+    "localhost"
+  ],
+  "inputs": {
+    "base": {
+      "type": "string"
+    }
+  },
+  "defaults": {
+    "timeoutMs": 10000,
+    "humanize": false
+  },
+  "steps": [
+    {
+      "id": "open",
+      "action": "goto",
+      "url": "{{inputs.base}}/selfcheck.html",
+      "expect": {
+        "exists": [
+          {
+            "testid": "sc-title"
+          }
+        ]
+      }
+    },
+    {
+      "id": "rows",
+      "action": "collect",
+      "item": [
+        {
+          "testid": "sc-row"
+        },
+        {
+          "css": "#list .row"
+        }
+      ],
+      "fields": {
+        "title": {
+          "target": [
+            {
+              "testid": "sc-row-title"
+            },
+            {
+              "css": "b"
+            }
+          ],
+          "text": true
+        }
+      },
+      "dedupeBy": "title",
+      "limit": 6,
+      "maxScrolls": 5,
+      "saveAs": "rows"
+    },
+    {
+      "id": "pick",
+      "action": "ask",
+      "question": "Which rows are worth opening?",
+      "data": "{{vars.rows}}",
+      "answer": {
+        "type": "pick",
+        "min": 1,
+        "max": 3
+      },
+      "default": [
+        0,
+        1
+      ],
+      "saveAs": "picked"
+    },
+    {
+      "id": "each",
+      "action": "forEach",
+      "in": "{{vars.picked}}",
+      "as": "row",
+      "max": 5,
+      "do": [
+        {
+          "id": "heading",
+          "action": "read",
+          "target": [
+            {
+              "testid": "sc-title"
+            },
+            {
+              "css": "h1"
+            }
+          ],
+          "saveAs": "heading"
+        },
+        {
+          "id": "keep",
+          "action": "ask",
+          "question": "Keep {{row.title}}?",
+          "data": "{{row}}",
+          "answer": {
+            "type": "boolean"
+          },
+          "default": true,
+          "saveAs": "keep"
+        }
+      ],
+      "collectFrom": {
+        "title": "{{row.title}}",
+        "keep": "{{vars.keep}}",
+        "heading": "{{vars.heading}}"
+      },
+      "saveAs": "results"
+    },
+    {
+      "id": "maybe",
+      "action": "if",
+      "when": {
+        "gt": [
+          "{{vars.results | length}}",
+          0
+        ]
+      },
+      "then": [
+        {
+          "id": "confirm",
+          "action": "ask",
+          "question": "Enough rows, or look for more?",
+          "answer": {
+            "type": "choice",
+            "options": [
+              "done",
+              "more"
+            ]
+          },
+          "default": "done",
+          "saveAs": "decision"
+        }
+      ]
+    }
+  ],
+  "outputs": {
+    "from": "{{vars.results}}"
+  }
+}
