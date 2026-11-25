@@ -19,6 +19,7 @@ import { checkSchema } from './jsonschema.js';
 import { loadScriptCode, hostMatches } from './scripts.js';
 import { validateTemplate } from './validate.js';
 import { appendTargets } from './schema.js';
+import { coerceAnswer, readPendingAsk, ASK_FILE, type PendingAsk } from './ask.js';
 import type { LoadedTemplate } from './library.js';
 import { RpaError, sleep, pickMs, log, truncateForRecord, readJson, writeJson, ENV_ERROR_CODES } from './util.js';
 
@@ -38,15 +39,30 @@ export interface RunOptions {
   connected?: Connected; // reuse an existing connection (act)
   skipLoginCheck?: boolean;
   forceClose?: boolean; // close the browser after the run even if it was already running (batch)
+  /** what an ask step does when no answer is stored yet: pause for the agent (default), use its default, or fail */
+  onAsk?: 'pause' | 'default' | 'fail';
+  /** continue a run that is paused at an ask step, in the same run directory (the answer is in its state.json) */
+  continueRun?: string;
 }
 
 export interface RunResult {
-  status: 'success' | 'failed';
+  status: 'success' | 'failed' | 'paused';
   runDir: string;
   output: any;
   outputPath: string;
   error?: { code: string; message: string; stepId: string | null; path: string | null; category: 'env' | 'template' };
   dossier?: string;
+  /** set when status is "paused": the question the agent has to answer */
+  ask?: PendingAsk;
+}
+
+/** Thrown by an ask step that has no answer yet: unwinds the run without failing it. */
+class AskPause extends RpaError {
+  ask: PendingAsk;
+  constructor(ask: PendingAsk) {
+    super('ASK_PENDING', `waiting for the agent to answer: ${ask.question}`);
+    this.ask = ask;
+  }
 }
 
 class StepFailure extends RpaError {
@@ -118,6 +134,7 @@ export class Runner {
   timeout: number;
   screenshots: 'failure' | 'every' | 'none';
   handoffMode: 'auto' | 'never';
+  onAsk: 'pause' | 'default' | 'fail';
   site: string[];
   private dossierWritten = false;
 
@@ -129,6 +146,7 @@ export class Runner {
     this.timeout = d.timeoutMs ?? 10000;
     this.screenshots = opts.screenshots ?? d.screenshots ?? 'failure';
     this.handoffMode = opts.headless ? 'never' : opts.handoff ?? 'auto';
+    this.onAsk = opts.onAsk ?? (opts.connected ? 'fail' : 'pause');
     this.site = this.tpl.site || [];
     this.scope = { inputs: {}, vars: {}, account: opts.account || {} };
   }
@@ -138,8 +156,36 @@ export class Runner {
   /** forEach progress by step path, so a resume skips iterations that already finished */
   private loops: Record<string, { next: number; fp: string; results: any[]; failures: any[] }> = {};
   private resumeLoops: Record<string, any> = {};
+  /**
+   * Finer progress inside the current top-level step, used only to continue a run paused at an ask step:
+   * which nested steps already finished, which if-branch was taken, which while round we were in.
+   * A failed run resumed with --resume ignores these and redoes the top-level step (the page may have changed).
+   */
+  private done = new Set<string>();
+  private resumeDone = new Set<string>();
+  private branches: Record<string, 'then' | 'else'> = {};
+  private resumeBranches: Record<string, 'then' | 'else'> = {};
+  private whileAt: Record<string, number> = {};
+  private resumeWhileAt: Record<string, number> = {};
+  /** answers given by the agent, by step path (written into state.json by `answer`) */
+  private answers: Record<string, any> = {};
+  private answeredSince: Record<string, string> = {};
+  /** close Chrome when the run really ends (it was started by this run and --keep-open was not given) */
+  private ownsBrowser = false;
   private persist() {
-    this.rec.saveState({ nextStep: this.nextTop, nextStepId: this.tpl.steps[this.nextTop]?.id ?? null, vars: this.scope.vars, inputs: this.scope.inputs, loops: this.loops });
+    this.rec.saveState({
+      nextStep: this.nextTop, nextStepId: this.tpl.steps[this.nextTop]?.id ?? null, vars: this.scope.vars, inputs: this.scope.inputs, loops: this.loops,
+      done: [...new Set([...this.resumeDone, ...this.done])], branches: { ...this.resumeBranches, ...this.branches }, whileAt: { ...this.resumeWhileAt, ...this.whileAt },
+      answers: this.answers, ownsBrowser: this.ownsBrowser,
+    });
+  }
+  private clearInner() {
+    this.done.clear();
+    this.resumeDone.clear();
+    this.branches = {};
+    this.resumeBranches = {};
+    this.whileAt = {};
+    this.resumeWhileAt = {};
   }
 
   // ---------- page probes ----------
@@ -231,7 +277,19 @@ export class Runner {
     if (!v.ok) throw new RpaError('TEMPLATE_INVALID', `template is invalid:\n` + v.errors.map((e) => `  [${e.stepId ?? '-'}] ${e.path}: ${e.message}`).join('\n'));
     let resumeState: any = null;
     let inputs = this.opts.inputs || {};
-    if (this.opts.resumeFrom) {
+    let cont: { prev: any; ask: PendingAsk | null } | null = null;
+    if (this.opts.continueRun) {
+      const dir = this.opts.continueRun;
+      const runFile = path.join(dir, 'run.json');
+      if (!fs.existsSync(runFile)) throw new RpaError('INPUT_INVALID', `${dir} is not a run directory (no run.json)`);
+      const prev = readJson(runFile);
+      if (prev.status !== 'paused') throw new RpaError('INPUT_INVALID', `run ${dir} is "${prev.status}", not paused at a question; only a paused run can continue`);
+      resumeState = readJson(path.join(dir, 'state.json'));
+      inputs = { ...(resumeState.inputs || {}), ...inputs };
+      this.opts.profile ??= prev.profile;
+      cont = { prev, ask: readPendingAsk(dir) };
+      if (prev.templateVersion !== this.tpl.version) log.info(`⚠️ the recipe changed since this run paused (${prev.templateVersion} → ${this.tpl.version}); continuing with the new version`);
+    } else if (this.opts.resumeFrom) {
       const runFile = path.join(this.opts.resumeFrom, 'run.json');
       if (!fs.existsSync(runFile)) throw new RpaError('INPUT_INVALID', `--resume: ${this.opts.resumeFrom} is not a run directory (no run.json). List runs with: browser-recipewright runs`);
       const prev = readJson(runFile);
@@ -249,8 +307,14 @@ export class Runner {
     }
     this.scope.inputs = coerceInputs(this.tpl, inputs);
     const profile = this.opts.profile || defaultProfile(this.tpl);
-    this.rec = new RunRecorder(this.tpl.id, this.opts.runsDir);
-    this.rec.start({
+    this.rec = new RunRecorder(this.tpl.id, this.opts.runsDir, this.opts.continueRun);
+    if (cont) {
+      const p = cont.ask?.path ?? this.tpl.steps[resumeState.nextStep || 0]?.id ?? '-';
+      this.rec.resume({ path: p, stepId: cont.ask?.stepId });
+      if (cont.ask) this.answeredSince[cont.ask.path] = cont.ask.since;
+      fs.rmSync(path.join(this.rec.dir, ASK_FILE), { force: true });
+      log.info(`▶ ${this.tpl.id}@${this.tpl.version}  continuing paused run ${this.rec.dir}`);
+    } else this.rec.start({
       templateId: this.tpl.id,
       templateVersion: this.tpl.version,
       templatePath: this.opts.loaded.path,
@@ -260,25 +324,43 @@ export class Runner {
       resumedFrom: this.opts.resumeFrom ?? null,
       options: { humanize: this.humanize, headless: !!this.opts.headless, handoff: this.handoffMode, screenshots: this.screenshots },
     }, this.tpl.steps);
-    log.info(`▶ ${this.tpl.id}@${this.tpl.version}  profile=${profile}  run=${this.rec.dir}`);
+    if (!cont) log.info(`▶ ${this.tpl.id}@${this.tpl.version}  profile=${profile}  run=${this.rec.dir}`);
     if (resumeState) {
       this.scope.vars = resumeState.vars || {};
       this.resumeLoops = resumeState.loops || {};
       this.loops = { ...this.resumeLoops };
       this.nextTop = resumeState.nextStep || 0;
     }
+    if (cont) {
+      this.resumeDone = new Set(resumeState.done || []);
+      this.resumeBranches = resumeState.branches || {};
+      this.resumeWhileAt = resumeState.whileAt || {};
+      this.answers = resumeState.answers || {};
+      this.ownsBrowser = !!resumeState.ownsBrowser && !this.opts.keepOpen;
+    }
     // checkpoint right away, so even a run that fails before step 1 can be resumed
     this.persist();
 
     let output: any = null;
     let error: RunResult['error'];
+    let paused: PendingAsk | null = null;
     let startIdx = 0;
     try {
       this.conn = this.opts.connected ?? (await connect(profile, { headless: this.opts.headless }));
+      if (!cont && !this.opts.connected) this.ownsBrowser = this.conn.launchedHere && !this.opts.keepOpen;
       this.page = this.conn.page;
       this.page.on('dialog', (d) => d.dismiss().catch(() => {}));
       this.watchPage(this.page);
-      if (resumeState) {
+      if (cont) {
+        startIdx = this.nextTop;
+        // the browser normally still shows the page where the question was asked; if it was closed meanwhile, go back there
+        const url = cont.ask?.url;
+        if (url && /^https?:/.test(url) && this.page.url() !== url) {
+          log.info(`↻ the browser is not on the page of the question any more; opening ${url}`);
+          this.checkSite(url);
+          await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        }
+      } else if (resumeState) {
         startIdx = this.nextTop;
         log.info(`↻ resuming at top-level step ${startIdx + 1}/${this.tpl.steps.length} "${this.tpl.steps[startIdx]?.id}" (skipping ${startIdx} finished step(s); from ${this.opts.resumeFrom})`);
         if (this.tpl.account?.loginCheck && !this.opts.skipLoginCheck) await this.loginCheck();
@@ -298,6 +380,7 @@ export class Runner {
       for (let i = startIdx; i < this.tpl.steps.length; i++) {
         const st = this.tpl.steps[i];
         await this.execStep(st, st.id, this.scope);
+        this.clearInner();
         saveState(i + 1);
       }
       output = this.tpl.outputs ? render(this.tpl.outputs.from, this.scope) : this.scope.vars;
@@ -306,15 +389,20 @@ export class Runner {
         if (errs.length) throw Object.assign(new RpaError('OUTPUT_INVALID', errs.join('; ')), { stepId: null });
       }
     } catch (e: any) {
+      if (e instanceof AskPause) {
+        paused = e.ask;
+        return this.finishPaused(paused, output);
+      }
       const err = normalizeError(e);
       error = { code: err.code, message: err.message, stepId: e.stepId ?? null, path: e.stepPath ?? null, category: errorCategory(err.code) };
       if (output === null && this.tpl.outputs) output = (() => { try { return render(this.tpl.outputs.from, this.scope); } catch { return null; } })();
       if (!this.dossierWritten) await this.writeDossier(null, err, error.path ?? '-', null).catch(() => {});
     } finally {
       if (this.page) this.unwatchPage(this.page);
-      this.rec.writeOutput(output);
+      if (!paused) this.rec.writeOutput(output);
       if (this.conn && !this.opts.connected) {
-        if ((this.conn.launchedHere && !this.opts.keepOpen) || this.opts.forceClose) await closeSession(this.conn.session.profile, this.conn.browser).catch(() => {});
+        // a paused run always leaves the browser open on the page, so the agent's answer continues right there
+        if (!paused && (this.ownsBrowser || this.opts.forceClose)) await closeSession(this.conn.session.profile, this.conn.browser).catch(() => {});
         else await disconnect(this.conn);
       }
     }
@@ -324,6 +412,15 @@ export class Runner {
     if (error) res.dossier = path.join(this.rec.dir, 'failure', 'dossier.json');
     log.info(error ? `✗ failed at ${error.stepId ?? '-'}: ${error.code} ${error.message}` : `✓ success → ${res.outputPath}`);
     return res;
+  }
+
+  /** The run stopped at an ask step: record it as paused (not finished) and tell the caller what is asked. */
+  private finishPaused(ask: PendingAsk, output: any): RunResult {
+    this.rec.writeOutput(output ?? null);
+    this.rec.pause({ path: ask.path, stepId: ask.stepId, question: ask.question });
+    log.info(`⏸  paused at ${ask.path}: ${ask.question}`);
+    log.info(`   answer with: ${ask.how}`);
+    return { status: 'paused', runDir: this.rec.dir, output: null, outputPath: path.join(this.rec.dir, 'output.json'), ask };
   }
 
   async loginCheck() {
@@ -455,6 +552,12 @@ export class Runner {
 
   // ---------- step execution ----------
   async execStep(step: any, stepPath: string, scope: Scope): Promise<any> {
+    if (this.resumeDone.has(stepPath)) {
+      // continuing after a question: this step already finished before the pause
+      this.done.add(stepPath);
+      log.info(`  · ${stepPath} (${step.action}) already done before the pause`);
+      return step.saveAs ? scope.vars[step.saveAs] ?? null : null;
+    }
     const rec: StepRecord = {
       seq: this.rec.nextSeq(), stepId: step.id, path: stepPath, action: step.action, status: 'ok',
       startedAt: new Date().toISOString(), durationMs: 0, urlBefore: this.page.url(), urlAfter: null,
@@ -468,6 +571,8 @@ export class Runner {
       this.rec.step(rec);
     };
 
+    if (step.action === 'ask') return this.execAsk(step, stepPath, scope, rec, finish);
+
     if (CONTROL.has(step.action)) {
       rec.attempts = 1;
       try {
@@ -477,8 +582,14 @@ export class Runner {
         if (step.appendTo) rec.appended = appendTo(scope, step.appendTo, out);
         this.emitData(step, stepPath, rec, out);
         finish();
+        this.done.add(stepPath);
         return out;
       } catch (e: any) {
+        if (e instanceof AskPause) {
+          rec.status = 'paused';
+          finish();
+          throw e;
+        }
         const err = normalizeError(e);
         rec.status = 'failed';
         rec.error = { code: err.code, message: err.message, category: errorCategory(err.code) };
@@ -538,6 +649,7 @@ export class Runner {
         rec.status = 'soft-failed';
         if (step.saveAs) scope.vars[step.saveAs] = null;
         finish();
+        this.done.add(stepPath);
         log.info(`  ~ ${stepPath} (${step.action}) optional step failed: ${lastErr.code}`);
         return null;
       }
@@ -555,6 +667,7 @@ export class Runner {
     this.emitData(step, stepPath, rec, value);
     if (this.screenshots === 'every' || step.screenshot) await this.screenshot(step.id, rec);
     finish();
+    this.done.add(stepPath);
     log.info(`  ✓ ${stepPath} (${step.action}) ${rec.durationMs}ms${rec.locator?.hit > 0 ? ` [fallback locator #${rec.locator.hit}]` : ''}`);
     if (!['wait'].includes(step.action)) {
       const gap = pickMs(this.tpl.defaults?.stepGapMs, 0);
@@ -573,6 +686,7 @@ export class Runner {
             for (const s of step.steps) await this.execStep(s, `${stepPath}.${s.id}`, scope);
             return null;
           } catch (e: any) {
+            if (e instanceof AskPause) throw e;
             if (a >= tries || errorCategory(e.code) === 'env') {
               if (step.optional && errorCategory(e.code) === 'template') { rec.status = 'soft-failed'; return null; }
               throw e;
@@ -583,16 +697,32 @@ export class Runner {
         }
       }
       case 'if': {
-        const r = await this.cond(step.when, scope);
-        rec.expect = { branch: r.pass ? 'then' : 'else', why: r.why };
-        const branch = r.pass ? step.then : step.else || [];
+        let taken = this.resumeBranches[stepPath];
+        if (taken) {
+          delete this.resumeBranches[stepPath];
+          rec.expect = { branch: taken, why: 'same branch as before the pause' };
+        } else {
+          const r = await this.cond(step.when, scope);
+          taken = r.pass ? 'then' : 'else';
+          rec.expect = { branch: taken, why: r.why };
+        }
+        this.branches[stepPath] = taken;
+        const branch = taken === 'then' ? step.then : step.else || [];
         for (const s of branch) await this.execStep(s, `${stepPath}.${s.id}`, scope);
         return null;
       }
       case 'while': {
         let i = 0;
+        // continuing after a question asked inside this loop: go back into the same round without re-checking
+        let inRound = stepPath in this.resumeWhileAt;
+        if (inRound) {
+          i = this.resumeWhileAt[stepPath];
+          delete this.resumeWhileAt[stepPath];
+        }
         for (; i < step.maxIterations; i++) {
-          if (!(await this.cond(step.when, scope)).pass) break;
+          if (!inRound && !(await this.cond(step.when, scope)).pass) break;
+          inRound = false;
+          this.whileAt[stepPath] = i;
           this.rec.events.emit('loop.iteration', { path: stepPath, index: i, max: step.maxIterations });
           for (const s of step.do) await this.execStep(s, `${stepPath}[${i}].${s.id}`, scope);
         }
@@ -617,15 +747,18 @@ export class Runner {
           log.info(`    ↻ ${stepPath}: ${from} of ${Math.min(list.length, max)} item(s) already done, continuing at item ${from + 1}`);
         }
         delete this.resumeLoops[stepPath];
+        const prefix = (i: number) => `${stepPath}[${i}].`;
         for (let i = from; i < Math.min(list.length, max); i++) {
-          for (const k of innerSaves) delete scope.vars[k];
+          // a round interrupted by a question keeps the values its finished steps saved
+          const partlyDone = i === from && [...this.resumeDone].some((p) => p.startsWith(prefix(i)));
+          if (!partlyDone) for (const k of innerSaves) delete scope.vars[k];
           const s2: Scope = { ...scope, [step.as]: list[i], index: i };
           this.rec.events.emit('loop.iteration', { path: stepPath, index: i, total: Math.min(list.length, max), item: preview(list[i], 1, 200) });
           try {
             for (const s of step.do) await this.execStep(s, `${stepPath}[${i}].${s.id}`, s2);
             if (step.collectFrom !== undefined) results.push(render(step.collectFrom, s2));
           } catch (e: any) {
-            if (!step.continueOnError || errorCategory(e.code) === 'env') throw e;
+            if (e instanceof AskPause || !step.continueOnError || errorCategory(e.code) === 'env') throw e;
             this.dossierWritten = false; // allow a fresh dossier for a later fatal error
             failures.push({ index: i, code: e.code, message: e.message });
             if (step.collectFrom !== undefined) results.push({ ...(render(step.collectFrom, s2) || {}), _error: { code: e.code, message: e.message } });
@@ -640,6 +773,79 @@ export class Runner {
         return step.flatten ? results.flatMap((x) => (Array.isArray(x) ? x : [x])) : results;
       }
     }
+  }
+
+  // ---------- breakpoints ----------
+  /**
+   * ask: use the agent's stored answer, or the default in unattended runs; otherwise stop here (browser stays on
+   * the page), write ask.json with the question and data, and let the agent answer with `browser-recipewright answer`.
+   */
+  async execAsk(step: any, stepPath: string, scope: Scope, rec: StepRecord, finish: () => void): Promise<any> {
+    rec.attempts = 1;
+    const fail = (err: RpaError) => {
+      rec.status = 'failed';
+      rec.error = { code: err.code, message: err.message, category: errorCategory(err.code) };
+      finish();
+      log.info(`  ✗ ${stepPath} (ask) ${err.code}: ${err.message}`);
+      return new StepFailure(err, step.id, stepPath);
+    };
+    const question = String(render(step.question, scope));
+    const data = step.data === undefined ? null : render(step.data, scope);
+    const spec = { ...(step.answer || {}), type: step.answer?.type ?? 'text' };
+    let raw: any;
+    let source: 'agent' | 'default' | null = null;
+    if (Object.prototype.hasOwnProperty.call(this.answers, stepPath)) {
+      raw = this.answers[stepPath];
+      delete this.answers[stepPath];
+      source = 'agent';
+    } else if (this.onAsk === 'default' && step.default !== undefined) {
+      raw = render(step.default, scope);
+      source = 'default';
+    }
+    if (source === null) {
+      if (this.onAsk !== 'pause') {
+        throw fail(new RpaError('ASK_UNANSWERED', `step asks the agent "${question}", but this run cannot stop for an answer (on-ask: ${this.onAsk})${step.default === undefined ? ' and the step has no default' : ''}`));
+      }
+      const ask: PendingAsk = {
+        runDir: this.rec.dir, templateId: this.tpl.id, templatePath: this.opts.loaded.path, stepId: step.id, path: stepPath,
+        question, answer: spec, data, ...(step.default !== undefined ? { default: render(step.default, scope) } : {}),
+        url: this.page.url(), since: new Date().toISOString(),
+        how: `browser-recipewright answer "${this.rec.dir}" --value '<JSON>'${spec.type === 'pick' ? '   (pick: item numbers starting at 0, e.g. [0,2,5])' : spec.type === 'choice' ? `   (one of ${JSON.stringify(spec.options)})` : ''}`,
+      };
+      writeJson(path.join(this.rec.dir, ASK_FILE), ask);
+      this.rec.events.emit('ask.start', {
+        step: rec.seq, path: stepPath, stepId: step.id, question, answerType: spec.type,
+        ...(spec.options ? { options: spec.options } : {}), ...(Array.isArray(data) ? { items: data.length } : {}),
+        ...(data != null ? { data: preview(data, 5, 300) } : {}), ...(step.default !== undefined ? { hasDefault: true } : {}),
+      });
+      rec.status = 'paused';
+      rec.note = 'waiting for the agent';
+      finish();
+      this.persist();
+      throw new AskPause(ask);
+    }
+    let value: any;
+    try {
+      value = coerceAnswer(spec, raw, data);
+    } catch (e: any) {
+      throw fail(normalizeError(e));
+    }
+    const since = this.answeredSince[stepPath];
+    delete this.answeredSince[stepPath];
+    this.rec.events.emit('ask.answered', {
+      step: rec.seq, path: stepPath, stepId: step.id, source, value: preview(value, 5, 300),
+      ...(spec.type === 'pick' && Array.isArray(raw) ? { picked: raw } : {}), ...(since ? { waitedMs: Date.now() - Date.parse(since) } : {}),
+    });
+    rec.output = truncateForRecord(value);
+    rec.answeredBy = source;
+    rec.question = question;
+    if (step.saveAs) scope.vars[step.saveAs] = value;
+    if (step.appendTo) rec.appended = appendTo(scope, step.appendTo, value);
+    this.emitData(step, stepPath, rec, value);
+    finish();
+    this.done.add(stepPath);
+    log.info(`  ✓ ${stepPath} (ask) answered by ${source}: ${JSON.stringify(preview(value, 3, 120))}`);
+    return value;
   }
 
   // ---------- atomic actions ----------
