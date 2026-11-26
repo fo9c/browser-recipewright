@@ -24,6 +24,7 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 - `browser-recipewright selfcheck`：在自带的本地测试页上用内置配方 `selfcheck/basic` 跑一遍所有核心浏览器操作（输入、选择、勾选、点击、按键、等待、悬停、滚动提取、跳转、返回），并检查输入是否可信、拟人。每项一行通过 / 失败。
 
 ### Changed
+- README（中英文）重写：按“配方片段 + Agent 现场编排 + 断点”讲清楚现在的功能，命令按用途分组，补上退出码 4，可视化说明为单独的插件，路线图更新。
 - **默认 profile 统一一条规则**：没写 `-p` 时，所有命令都一样：有配方 → `<配方站点>/default`；`launch --url` → `<网址域名>/default`；否则用当前唯一在运行的浏览器；同时有多个在运行 → 报 `PROFILE_AMBIGUOUS`（退出码 2）让你用 `-p` 指定；都没有 → `<网址域名>/default` 或 `default/default`。选中的 profile 会打印出来。以前 `run` 用 `<站点>/default` 而 `snapshot`/`act` 用 `default/default`，`run --keep-open` 之后再 `snapshot` 会悄悄开一个空浏览器。
 - `dailyCapPerAccount` 不再跳过任务，改为和 `remindAfter` 一样只提醒；计数从按账号 id 改为按 站点+账号（profile）。旧的按 id 计数文件不再读取。
 - `waitFor` 的目标匹配到多个元素时视为“已出现”，不再报 `LOCATOR_AMBIGUOUS`（等一个列表出现时很常见）。
