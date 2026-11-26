@@ -16,9 +16,13 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 - **任务记录**：`task start/note/show/list/end`。任务进行中，每次 `act`、`run`、`answer` 和 Agent 记下的判断都写进同一份 `journal.jsonl`；`--gap` 让片段之间有随机停顿。`task draft` 把这些记录整理成配方或 flow 草稿（act → 步骤，配方运行 → `recipe` 调用，判断 → `ask` 断点，`--param` 把固定值变成输入）。
 - 运行数据格式 v1 新增（向后兼容）：`recipe.enter` 事件；任务记录 `tasks/<name>/journal.jsonl`。
 - 运行数据格式 v1 新增（向后兼容）：`ask.start`、`ask.answered`、`run.pause`、`run.resume` 事件，步骤状态 `paused`，运行状态 `paused`，以及暂停期间的 `ask.json`。
+- **弹窗策略**：配方 `defaults.dialogs` 可设为 `accept`（或 `{ "action": "accept", "promptText": "..." }` 回答 prompt），`run` / `act` 可用 `--dialogs accept|dismiss` 覆盖；默认仍是关闭（dismiss）。每个弹窗都会记录成新的 `dialog` 事件（向后兼容）。
 - `browser-recipewright selfcheck`：在自带的本地测试页上用内置配方 `selfcheck/basic` 跑一遍所有核心浏览器操作（输入、选择、勾选、点击、按键、等待、悬停、滚动提取、跳转、返回），并检查输入是否可信、拟人。每项一行通过 / 失败。
 
 ### Changed
+- `waitFor` 的目标匹配到多个元素时视为“已出现”，不再报 `LOCATOR_AMBIGUOUS`（等一个列表出现时很常见）。
+- `snapshot` 的 ref id 改为按元素本身（角色、名字、testid 等）生成的短哈希，同一个元素在多次快照之间 id 不变；页面上方新增内容不会让后面的 ref 全部错位。外观相同的元素依次加 `-2`、`-3`。
+- 内部错误类 `RpaError` 改名为 `RecipeError`；Python 包的 `BrowserRpaError` 改名为 `RecipewrightError`（旧名保留为别名）。
 - 不再内置任何真实网站的配方；`templates/` 只保留针对本地测试页的 `selfcheck/basic` 和 `demo/local-feed`。示例、文档和 Skill 里的站点一律改用 example.com 或本地演示站。
 - 离线演示站改用中性的 test id（`post`、`post-text`、`author`、`account-menu` 等）。
 - Python `flatten_posts` 不再写死域名，新增 `base` 参数。
