@@ -8,7 +8,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawn, execFileSync } from 'node:child_process';
 import { chromium, type Browser, type BrowserContext, type Page } from 'patchright';
-import { dirs, ensureDir, readJson, writeJson, safeName, sleep, RpaError, log } from './util.js';
+import { dirs, ensureDir, readJson, writeJson, safeName, sleep, RecipeError, log } from './util.js';
 
 export interface SessionInfo {
   profile: string;
@@ -143,7 +143,7 @@ export function chromeArgs(userDataDir: string, opts: { headless?: boolean; firs
 /** Launch a fresh Chrome for this profile (detached, so it can outlive the CLI call). */
 export async function launchChrome(profile: string, opts: { headless?: boolean; url?: string } = {}): Promise<SessionInfo> {
   const chrome = findChrome();
-  if (!chrome) throw new RpaError('BROWSER_ERROR', 'Google Chrome not found. Install Chrome, or set BROWSER_RECIPEWRIGHT_CHROME=/path/to/chrome');
+  if (!chrome) throw new RecipeError('BROWSER_ERROR', 'Google Chrome not found. Install Chrome, or set BROWSER_RECIPEWRIGHT_CHROME=/path/to/chrome');
   const userDataDir = ensureDir(profileDir(profile));
   const portFile = path.join(userDataDir, 'DevToolsActivePort');
   fs.rmSync(portFile, { force: true });
@@ -164,7 +164,7 @@ export async function launchChrome(profile: string, opts: { headless?: boolean; 
   }
   if (!port || !(await cdpReachable(port))) {
     try { if (child.pid) process.kill(child.pid); } catch {}
-    throw new RpaError(
+    throw new RecipeError(
       'BROWSER_ERROR',
       `Chrome did not start for profile "${profile}". If a Chrome window is already open with this profile, close it (or run: browser-recipewright close --profile ${profile}) and retry.`,
     );

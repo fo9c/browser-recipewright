@@ -21,7 +21,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { dirs, ensureDir, readJson, writeJson, safeName, timestampId, todayKey, pickMs, sleep, log, RpaError } from './util.js';
+import { dirs, ensureDir, readJson, writeJson, safeName, timestampId, todayKey, pickMs, sleep, log, RecipeError } from './util.js';
 import { loadTemplate } from './library.js';
 import { Runner } from './engine.js';
 
@@ -69,10 +69,10 @@ export function planJobs(spec: any, baseDir: string): Job[] {
       accounts.push({ id, profile, inputs: Object.fromEntries(Object.entries(inputs).filter(([, v]) => v !== '')) });
     }
   }
-  if (!accounts.length) throw new RpaError('BATCH_INVALID', 'batch has no accounts');
+  if (!accounts.length) throw new RecipeError('BATCH_INVALID', 'batch has no accounts');
   const byId = new Map(accounts.map((a) => [a.id, a]));
   for (const a of accounts) {
-    if (!a.id) throw new RpaError('BATCH_INVALID', 'every account needs an "id"');
+    if (!a.id) throw new RecipeError('BATCH_INVALID', 'every account needs an "id"');
     a.profile ||= `${spec._site}/${a.id}`;
   }
   let rawJobs: any[] = [...(spec.jobs || [])];
@@ -86,7 +86,7 @@ export function planJobs(spec: any, baseDir: string): Job[] {
   const counts: Record<string, number> = {};
   return rawJobs.map((j) => {
     const a = byId.get(j.account);
-    if (!a) throw new RpaError('BATCH_INVALID', `job references unknown account "${j.account}"`);
+    if (!a) throw new RecipeError('BATCH_INVALID', `job references unknown account "${j.account}"`);
     counts[a.id] = (counts[a.id] || 0) + 1;
     const { inputs: accInputs, ...accountInfo } = a;
     return { key: `${a.id}#${counts[a.id]}`, account: accountInfo, inputs: { ...(spec.inputs || {}), ...(accInputs || {}), ...(j.inputs || {}) } };

@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { checkSchema } from './jsonschema.js';
-import { RpaError, readJson, writeJson, dirs } from './util.js';
+import { RecipeError, readJson, writeJson, dirs } from './util.js';
 
 export const ANSWER_TYPES = ['text', 'number', 'boolean', 'choice', 'pick', 'json'] as const;
 export type AnswerType = (typeof ANSWER_TYPES)[number];
@@ -59,7 +59,7 @@ const FALSE = new Set([false, 'false', 'no', 'n', '0', 0, '否', '不']);
  */
 export function coerceAnswer(spec: AnswerSpec | undefined, raw: any, data: any): any {
   const type: AnswerType = spec?.type ?? 'text';
-  const bad = (msg: string) => new RpaError('ANSWER_INVALID', `answer ${JSON.stringify(raw)} is not valid: ${msg}`);
+  const bad = (msg: string) => new RecipeError('ANSWER_INVALID', `answer ${JSON.stringify(raw)} is not valid: ${msg}`);
   switch (type) {
     case 'text':
       if (raw == null) throw bad('expected text');
@@ -130,7 +130,7 @@ export function readPendingAsk(runDir: string): PendingAsk | null {
 /** Store the agent's answer for the pending ask in state.json, after checking it. Returns the converted value. */
 export function recordAnswer(runDir: string, raw: any): { ask: PendingAsk; value: any } {
   const ask = readPendingAsk(runDir);
-  if (!ask) throw new RpaError('INPUT_INVALID', `${runDir} is not waiting for an answer (no ${ASK_FILE}). See: browser-recipewright pending`);
+  if (!ask) throw new RecipeError('INPUT_INVALID', `${runDir} is not waiting for an answer (no ${ASK_FILE}). See: browser-recipewright pending`);
   const value = coerceAnswer(ask.answer, raw, ask.data);
   const stateFile = path.join(runDir, 'state.json');
   const state = fs.existsSync(stateFile) ? readJson(stateFile) : {};

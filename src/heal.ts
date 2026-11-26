@@ -11,7 +11,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { RpaError, readJson, writeJson, dirs, ensureDir } from './util.js';
+import { RecipeError, readJson, writeJson, dirs, ensureDir } from './util.js';
 import { validateTemplate, ValidationResult } from './validate.js';
 
 type StepHolder = { list: any[]; index: number };
@@ -35,7 +35,7 @@ function pointer(obj: any, p: string): { parent: any; key: string } {
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     cur = cur[Array.isArray(cur) ? Number(parts[i]) : parts[i]];
-    if (cur === undefined) throw new RpaError('PATCH_INVALID', `path ${p} does not exist`);
+    if (cur === undefined) throw new RecipeError('PATCH_INVALID', `path ${p} does not exist`);
   }
   return { parent: cur, key: parts[parts.length - 1] };
 }
@@ -48,7 +48,7 @@ function applyJsonPatch(target: any, ops: any[]) {
     if (o.op === 'replace') isArr ? (parent[idx] = o.value) : (parent[key] = o.value);
     else if (o.op === 'add') isArr ? parent.splice(idx, 0, o.value) : (parent[key] = o.value);
     else if (o.op === 'remove') isArr ? parent.splice(idx, 1) : delete parent[key];
-    else throw new RpaError('PATCH_INVALID', `unsupported JSON Patch op "${o.op}"`);
+    else throw new RecipeError('PATCH_INVALID', `unsupported JSON Patch op "${o.op}"`);
   }
 }
 
@@ -62,9 +62,9 @@ export function applyPatch(template: any, patch: any): { template: any; changed:
   const entries = Array.isArray(patch) ? patch : [patch];
   const changed: string[] = [];
   for (const e of entries) {
-    if (!e.stepId) throw new RpaError('PATCH_INVALID', 'each patch entry needs "stepId"');
+    if (!e.stepId) throw new RecipeError('PATCH_INVALID', 'each patch entry needs "stepId"');
     const h = findStep(t.steps, e.stepId);
-    if (!h) throw new RpaError('PATCH_INVALID', `step "${e.stepId}" not found in template`);
+    if (!h) throw new RecipeError('PATCH_INVALID', `step "${e.stepId}" not found in template`);
     const op = e.ops ? 'jsonpatch' : e.op || 'replace';
     switch (op) {
       case 'replace':
@@ -87,7 +87,7 @@ export function applyPatch(template: any, patch: any): { template: any; changed:
         applyJsonPatch(h.list[h.index], e.ops);
         break;
       default:
-        throw new RpaError('PATCH_INVALID', `unknown op "${op}"`);
+        throw new RecipeError('PATCH_INVALID', `unknown op "${op}"`);
     }
     changed.push(e.stepId);
   }
