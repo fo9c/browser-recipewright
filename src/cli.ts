@@ -14,7 +14,8 @@ import { evalCond } from './conditions.js';
 import { countTarget, textOfTarget } from './locator.js';
 import { listRuns, readSteps } from './records.js';
 import { patchTemplateFile } from './heal.js';
-import { runBatch, usageToday } from './batch.js';
+import { runBatch } from './batch.js';
+import { usageOf } from './usage.js';
 import { buildJsonSchema } from './schema.js';
 import { checkRunDir, EVENTS_FILE, buildRunEventsJsonSchema } from './events.js';
 import { startDemoServer } from './demo.js';
@@ -673,24 +674,25 @@ program
 // ---------------- batch & accounts ----------------
 program
   .command('batch [batchFile]')
-  .description('run a template for many accounts (spacing, daily caps, skip expired logins, resume)')
+  .description('run a template for many accounts (spacing, run/item caps per site+account, skip expired logins, merged result table, resume; optionally several browsers at once)')
   .option('--resume <batchDir>', 'resume an interrupted batch (completed jobs are not repeated)')
   .option('--retry-failed', 'with --resume: also rerun failed jobs')
   .option('--dry-run', 'only print the job plan')
   .option('--headless', 'run without windows')
+  .option('--parallel <n>', 'browsers at once, each with its own profile (default: batch.json "parallel", else 1)')
   .action(wrap(async (file, o) => {
     if (!file && !o.resume) throw new RecipeError('BATCH_INVALID', 'give a batch file or --resume <batchDir>');
-    const r: any = await runBatch({ file, resumeDir: o.resume, retryFailed: o.retryFailed, dryRun: o.dryRun, headless: o.headless });
+    const r: any = await runBatch({ file, resumeDir: o.resume, retryFailed: o.retryFailed, dryRun: o.dryRun, headless: o.headless, parallel: o.parallel === undefined ? undefined : Number(o.parallel) });
     out({ status: r.stopped ? 'paused' : 'ok', ...r, rows: undefined, jobs: r.dryRun ? r.jobs : undefined });
   }));
 
 program
   .command('accounts')
-  .description('list local browser profiles (accounts), running sessions and today\'s usage')
+  .description('list local browser profiles (accounts), running sessions and usage per site+account (runs / items today and in the last hour)')
   .action(wrap(async () => {
     const sessions = await listSessions();
-    const rows = profilesList().filter((p) => !p.startsWith('_')).map((p) => ({ profile: p, running: sessions.some((s) => s.profile === p), usageToday: usageToday(p.split('/')[1] || p) }));
-    for (const r of rows) log.info(`${r.running ? '●' : '○'} ${r.profile}  today=${r.usageToday}`);
+    const rows = profilesList().filter((p) => !p.startsWith('_')).map((p) => ({ profile: p, running: sessions.some((s) => s.profile === p), usage: usageOf(p) }));
+    for (const r of rows) log.info(`${r.running ? '●' : '○'} ${r.profile}  today: ${r.usage.runsToday} runs, ${r.usage.itemsToday} items · last hour: ${r.usage.runsLastHour} runs, ${r.usage.itemsLastHour} items`);
     out({ status: 'ok', home: homeDir(), accounts: rows });
   }));
 
