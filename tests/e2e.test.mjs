@@ -53,7 +53,7 @@ test('fresh profile without login → LOGIN_REQUIRED (exit 3)', { skip }, async 
 test('login via snapshot + act, then full run succeeds with records', { skip }, async () => {
   assert.equal((await cli('launch', '--headless', '-p', 'demo/e2e', '--url', `${srv.url}/home.html`)).json.status, 'ok');
   const snap = await cli('snapshot', '-p', 'demo/e2e');
-  const ref = snap.stdout.match(/button "Log in".*\[ref=(r\d+)\]/)[1];
+  const ref = snap.stdout.match(/button "Log in".*\[ref=(r[\w-]+)\]/)[1];
   const act = await cli('act', 'click', '--ref', ref, '-p', 'demo/e2e');
   assert.equal(act.json.status, 'success', act.stdout);
   const r = await cli('run', 'demo/local-feed', '-i', `base=${srv.url}`, '-i', 'count=3', '-i', 'maxComments=4', '-p', 'demo/e2e', '--no-handoff');
@@ -391,4 +391,112 @@ test('tasks: act / run / notes go into one journal; task draft turns them into a
     await cli('task', 'end');
     await cli('close', '-p', 'test/task');
   }
+});
+
+test('waitFor a target that matches many elements passes (presence, not "exactly one")', { skip }, async () => {
+  assert.equal((await cli('launch', '--headless', '-p', 'fix/e2e', '--url', `${srv.url}/selfcheck.html`)).json.status, 'ok');
+  const r = await cli('act', 'waitFor', '--target', '[{"css":"section"}]', '-p', 'fix/e2e');
+  assert.equal(r.json.status, 'success', r.stdout);
+  assert.equal(r.json.locator.hit, 0);
+  assert.ok(r.json.locator.tried[0].matches > 1, r.stdout);
+  const miss = await cli('act', 'waitFor', '--target', '[{"css":"#nope"}]', '--step', '{"action":"waitFor","target":[{"css":"#nope"}],"timeoutMs":800}', '-p', 'fix/e2e');
+  assert.equal(miss.json.error.code, 'LOCATOR_NOT_FOUND', miss.stdout);
+});
+
+test('snapshot ref ids are stable: same element keeps its ref when content above it changes', { skip }, async () => {
+  const html = '<main><div id=top></div><button onclick="for(let i=0;i<10;i++){const b=document.createElement(\'button\');b.textContent=\'New \'+i;document.getElementById(\'top\').prepend(b)}">Add</button><a href="/next">Target link</a><button>Like</button><button>Like</button></main>';
+  assert.equal((await cli('launch', '--headless', '-p', 'fix/e2e', '--url', 'data:text/html,' + encodeURIComponent(html))).json.status, 'ok');
+  const refOf = (text, re) => text.match(re)?.[1];
+  const a = await cli('snapshot', '-p', 'fix/e2e');
+  const before = refOf(a.stdout, /link "Target link".*\[ref=(r[\w-]+)\]/);
+  assert.ok(before, a.stdout);
+  const add = refOf(a.stdout, /button "Add".*\[ref=(r[\w-]+)\]/);
+  // ten new buttons appear above the link: position-based ids (r1, r2 ...) would all shift
+  const c = await cli('act', 'click', '--ref', add, '-p', 'fix/e2e');
+  assert.equal(c.json.status, 'success', c.stdout);
+  const b = await cli('snapshot', '-p', 'fix/e2e');
+  assert.match(b.stdout, /New 9/);
+  assert.equal(refOf(b.stdout, /link "Target link".*\[ref=(r[\w-]+)\]/), before);
+  assert.equal(refOf(b.stdout, /button "Add".*\[ref=(r[\w-]+)\]/), add);
+  const refs = [...b.stdout.matchAll(/\[ref=(r[\w-]+)\]/g)].map((m) => m[1]);
+  assert.equal(new Set(refs).size, refs.length, 'refs are unique (look-alike "Like" buttons get -2)');
+  assert.ok(refs.some((r) => r.endsWith('-2')));
+  const gone = await cli('act', 'click', '--ref', 'rzzzzz', '-p', 'fix/e2e');
+  assert.match(gone.json.error.message, /run snapshot again/);
+});
+
+test('dialogs: dismissed by default, accepted with --dialogs accept (prompt gets promptText), recorded as events', { skip }, async () => {
+  const html = '<button onclick="document.getElementById(\'o\').textContent=confirm(\'Sure?\')?\'yes\':\'no\'">Confirm</button><button onclick="document.getElementById(\'o\').textContent=prompt(\'Name?\',\'d\')">Prompt</button><p id=o>-</p>';
+  assert.equal((await cli('launch', '--headless', '-p', 'fix/e2e', '--url', 'data:text/html,' + encodeURIComponent(html))).json.status, 'ok');
+  const out = async () => (await cli('act', 'read', '--target', '[{"css":"#o"}]', '-p', 'fix/e2e')).json.output;
+  const confirmBtn = '[{"role":"button","name":"Confirm"}]';
+  assert.equal((await cli('act', 'click', '--target', confirmBtn, '-p', 'fix/e2e')).json.status, 'success');
+  assert.equal(await out(), 'no');
+  const acc = await cli('act', 'click', '--target', confirmBtn, '--dialogs', 'accept', '-p', 'fix/e2e');
+  assert.equal(acc.json.status, 'success', acc.stdout);
+  assert.equal(await out(), 'yes');
+  const ev = fs.readFileSync(path.join(acc.json.runDir, 'events.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).find((e) => e.type === 'dialog');
+  assert.equal(ev.dialogType, 'confirm');
+  assert.equal(ev.message, 'Sure?');
+  assert.equal(ev.action, 'accept');
+  // a template sets the policy once for all its steps; promptText answers prompt()
+  const tpl = path.join(HOME, 'dialogs.json');
+  fs.writeFileSync(tpl, JSON.stringify({ id: 'test/dialogs', version: '1.0.0', title: 'dialogs', site: ['*'], defaults: { dialogs: { action: 'accept', promptText: 'Ada' } },
+    steps: [{ id: 'p', action: 'click', target: [{ role: 'button', name: 'Prompt' }] }, { id: 'r', action: 'read', target: [{ css: '#o' }], saveAs: 'o' }], outputs: { from: '{{vars.o}}' } }));
+  const r = await cli('run', tpl, '-p', 'fix/e2e', '--no-handoff', '--keep-open');
+  assert.equal(r.json.status, 'success', r.stdout + r.stderr);
+  assert.equal(JSON.parse(fs.readFileSync(r.json.output, 'utf8')), 'Ada');
+  assert.equal((await cli('act', 'click', '--target', confirmBtn, '--dialogs', 'maybe', '-p', 'fix/e2e')).json.error.code, 'INPUT_INVALID');
+});
+
+test('profiles: without -p, live commands use the only running browser; two running → PROFILE_AMBIGUOUS', { skip }, async () => {
+  await cli('close', '--all');
+  const l = await cli('launch', '--headless', '--url', `${srv.url}/selfcheck.html`);
+  assert.equal(l.json.session.profile, '127.0.0.1/default', l.stdout);
+  const snap = await cli('snapshot');
+  assert.match(snap.stdout, /自检页/);
+  assert.match(snap.stderr, /profile: 127\.0\.0\.1\/default \(the only running browser\)/);
+  assert.equal((await cli('act', 'waitFor', '--target', '[{"css":"section"}]')).json.status, 'success');
+  assert.equal((await cli('launch', '--headless', '-p', 'other.test/a')).json.status, 'ok');
+  const amb = await cli('snapshot');
+  assert.equal(amb.code, 2);
+  assert.equal(amb.json.error.code, 'PROFILE_AMBIGUOUS');
+  assert.match(amb.json.error.message, /other\.test\/a/);
+  assert.match((await cli('snapshot', '-p', 'other.test/a')).stdout, /about:blank/);
+  await cli('close', '--all');
+});
+
+test('batch: two browsers in parallel, a reminder (never a block) per site+account, one merged table', { skip }, async () => {
+  await cli('close', '--all');
+  for (const p of ['demo/p1', 'demo/p2']) {
+    assert.equal((await cli('launch', '--headless', '-p', p, '--url', `${srv.url}/home.html?autologin=1`)).json.status, 'ok');
+    await cli('close', '-p', p);
+  }
+  const spec = {
+    name: 'par', template: 'demo/local-feed', headless: true, spacingMs: 300, parallel: 2, remindAfter: 1,
+    inputs: { base: srv.url, count: 2, maxComments: 1 },
+    accounts: [{ id: 'p1', profile: 'demo/p1' }, { id: 'p2', profile: 'demo/p2' }],
+    jobs: [{ account: 'p1' }, { account: 'p1' }, { account: 'p2' }],
+  };
+  const f = path.join(HOME, 'batch-par.json');
+  fs.writeFileSync(f, JSON.stringify(spec));
+  const r = await cli('batch', f);
+  // nothing is skipped: the reminder only warns
+  assert.deepEqual(r.json.counts, { success: 3 }, r.stderr);
+  const log = r.stderr;
+  // p2 started while p1's first job was still running; p1's second job waited (same profile)
+  assert.ok(log.indexOf('job p2#1') < log.indexOf('✓ success'), log);
+  assert.ok(log.indexOf('job p1#2') > log.indexOf('✓ success'), log);
+  assert.match(log, /reminder: demo\/p1 already ran 1 times today/);
+  assert.deepEqual(r.json.reminders, ['demo/p1 already ran 1 times today (remindAfter 1)']);
+  assert.equal(r.json.merged.rows, 6);
+  assert.deepEqual(r.json.merged.byAccount, { p1: 4, p2: 2 });
+  const merged = JSON.parse(fs.readFileSync(r.json.merged.json, 'utf8'));
+  assert.deepEqual(Object.keys(merged[0]).slice(0, 3), ['_job', '_account', '_profile']);
+  assert.ok(merged.every((m) => m.post && m._profile.startsWith('demo/p')));
+  const csv = fs.readFileSync(r.json.merged.csv, 'utf8');
+  assert.match(csv.split('\n')[0], /^﻿_job,_account,_profile,post/);
+  assert.equal(csv.trim().split('\n').length, 7);
+  const acc = await cli('accounts');
+  assert.deepEqual(acc.json.accounts.find((a) => a.profile === 'demo/p1').usage, { runsToday: 2, itemsToday: 4 });
 });

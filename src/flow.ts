@@ -13,7 +13,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { loadTemplate, type LoadedTemplate } from './library.js';
 import { validateTemplate, type Issue } from './validate.js';
-import { RpaError } from './util.js';
+import { RecipeError } from './util.js';
 
 /** Most nested recipe calls allowed (flow → recipe → recipe …). */
 export const MAX_RECIPE_DEPTH = 4;
@@ -23,7 +23,7 @@ export function resolveRecipe(ref: string, fromPath?: string): LoadedTemplate {
   if ((ref.startsWith('./') || ref.startsWith('../')) && fromPath && fromPath !== '(act)') {
     const p = path.resolve(path.dirname(fromPath), ref);
     if (fs.existsSync(p)) return loadTemplate(p);
-    throw new RpaError('TEMPLATE_NOT_FOUND', `recipe "${ref}" not found next to ${fromPath} (looked for ${p})`);
+    throw new RecipeError('TEMPLATE_NOT_FOUND', `recipe "${ref}" not found next to ${fromPath} (looked for ${p})`);
   }
   return loadTemplate(ref);
 }

@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { PKG_ROOT, dirs, RpaError } from './util.js';
+import { PKG_ROOT, dirs, RecipeError } from './util.js';
 
 export interface ScriptEntry {
   file: string;
@@ -51,7 +51,7 @@ export function checkScript(name: string, site: string[]): string | null {
 
 export function loadScriptCode(name: string, site: string[]): string {
   const err = checkScript(name, site);
-  if (err) throw new RpaError('SCRIPT_REJECTED', err);
+  if (err) throw new RecipeError('SCRIPT_REJECTED', err);
   const e = loadScripts()[name];
   return fs.readFileSync(path.join(e.dir, e.file), 'utf8');
 }

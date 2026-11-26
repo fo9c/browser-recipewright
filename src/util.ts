@@ -93,7 +93,9 @@ export function truncateForRecord(v: unknown, maxLen = 2000): unknown {
   return { _summary: `truncated ${s.length} chars`, preview: s.slice(0, maxLen) };
 }
 
-export class RpaError extends Error {
+/** Error with a machine-readable code (LOCATOR_NOT_FOUND, LOGIN_REQUIRED ...). The CLI prints the code and maps it to an exit code. */
+/** Error with a machine-readable code (LOCATOR_NOT_FOUND, LOGIN_REQUIRED ...): the CLI prints the code and maps it to an exit code. */
+export class RecipeError extends Error {
   code: string;
   details?: any;
   constructor(code: string, message: string, details?: any) {

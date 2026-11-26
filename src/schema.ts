@@ -190,6 +190,8 @@ export const TemplateSchema = z.strictObject({
       stepGapMs: ms.optional(),
       humanize: z.boolean().optional(),
       screenshots: z.enum(['failure', 'every', 'none']).optional(),
+      /** what to do with alert / confirm / prompt / leave-page dialogs: dismiss (default) or accept; promptText answers a prompt() */
+      dialogs: z.union([z.enum(['dismiss', 'accept']), z.strictObject({ action: z.enum(['dismiss', 'accept']), promptText: z.string().optional() })]).optional(),
     })
     .optional(),
   steps: Steps.min(1),

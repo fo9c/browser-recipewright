@@ -16,14 +16,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-__all__ = ["run", "batch", "load_run", "list_runs", "to_csv", "flatten_posts", "RunResult", "BrowserRpaError"]
+__all__ = ["run", "batch", "load_run", "list_runs", "to_csv", "flatten_posts", "RunResult", "RecipewrightError", "BrowserRpaError"]
 
 
-class BrowserRpaError(RuntimeError):
+class RecipewrightError(RuntimeError):
     def __init__(self, code: str, message: str, result: dict | None = None):
         super().__init__(f"{code}: {message}")
         self.code = code
         self.result = result or {}
+
+
+# old name from the browser-rpa days, kept so existing scripts keep working
+BrowserRpaError = RecipewrightError
 
 
 @dataclass
@@ -54,7 +58,7 @@ def _call(args: list[str]) -> tuple[int, dict]:
     try:
         data = json.loads(p.stdout)
     except json.JSONDecodeError:
-        raise BrowserRpaError("CLI_ERROR", (p.stderr or p.stdout).strip()[-2000:])
+        raise RecipewrightError("CLI_ERROR", (p.stderr or p.stdout).strip()[-2000:])
     return p.returncode, data
 
 
@@ -80,7 +84,7 @@ def run(template: str, inputs: dict | None = None, profile: str | None = None, *
     res = RunResult(data.get("status", "error"), run_dir, output, data.get("error"), data)
     if raise_on_error and not res.ok:
         err = res.error or {}
-        raise BrowserRpaError(err.get("code", "ERROR"), err.get("message", ""), data)
+        raise RecipewrightError(err.get("code", "ERROR"), err.get("message", ""), data)
     return res
 
 

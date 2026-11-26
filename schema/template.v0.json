@@ -173,6 +173,36 @@
             "every",
             "none"
           ]
+        },
+        "dialogs": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "dismiss",
+                "accept"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "dismiss",
+                    "accept"
+                  ]
+                },
+                "promptText": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action"
+              ],
+              "additionalProperties": false
+            }
+          ]
         }
       },
       "additionalProperties": false

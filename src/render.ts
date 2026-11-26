@@ -1,5 +1,5 @@
 /** {{ ... }} references: lookup only, plus a few built-in filters. No arbitrary expressions. */
-import { RpaError } from './util.js';
+import { RecipeError } from './util.js';
 
 export type Scope = Record<string, any>;
 
@@ -34,7 +34,7 @@ export function parseExpr(expr: string): { path: string[]; filters: string[] } {
     consumed += m[0];
   }
   if (!path.length || consumed.length !== head.replace(/\./g, '').length) {
-    throw new RpaError('TEMPLATE_INVALID', `bad reference "{{${expr}}}"`);
+    throw new RecipeError('TEMPLATE_INVALID', `bad reference "{{${expr}}}"`);
   }
   return { path, filters };
 }
@@ -51,7 +51,7 @@ export function lookup(scope: Scope, expr: string): any {
   }
   for (const f of filters) {
     const fn = FILTERS[f];
-    if (!fn) throw new RpaError('TEMPLATE_INVALID', `unknown filter "${f}"`);
+    if (!fn) throw new RecipeError('TEMPLATE_INVALID', `unknown filter "${f}"`);
     v = fn(v);
   }
   return v;

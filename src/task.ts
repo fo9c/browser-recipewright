@@ -12,7 +12,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { dirs, readJson, writeJson, safeName, RpaError, pickMs, sleep, log } from './util.js';
+import { dirs, readJson, writeJson, safeName, RecipeError, pickMs, sleep, log } from './util.js';
 import { validateTemplate } from './validate.js';
 import { checkRecipeCalls } from './flow.js';
 
@@ -37,7 +37,7 @@ const taskDir = (name: string) => path.join(dirs.tasks(), safeName(name.replace(
 const currentFile = () => path.join(dirs.tasks(), '_current.json');
 
 export function startTask(name: string, opts: { gapMs?: number | [number, number]; note?: string } = {}): TaskInfo {
-  if (!name.trim()) throw new RpaError('INPUT_INVALID', 'give the task a name');
+  if (!name.trim()) throw new RecipeError('INPUT_INVALID', 'give the task a name');
   const dir = taskDir(name);
   const f = path.join(dir, 'task.json');
   const info: TaskInfo = fs.existsSync(f) ? { ...readJson<TaskInfo>(f), endedAt: undefined } : { name, startedAt: new Date().toISOString() };
@@ -70,7 +70,7 @@ export function endTask(): TaskInfo | null {
 
 export function readJournal(name: string): JournalEntry[] {
   const f = path.join(taskDir(name), 'journal.jsonl');
-  if (!fs.existsSync(f)) throw new RpaError('INPUT_INVALID', `no task "${name}" (see: browser-recipewright task list)`);
+  if (!fs.existsSync(f)) throw new RecipeError('INPUT_INVALID', `no task "${name}" (see: browser-recipewright task list)`);
   return fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 }
 
@@ -183,7 +183,7 @@ export function draftFromJournal(name: string, opts: DraftOptions = {}) {
       steps.push({ id: uid(`decide-${e.seq}`), action: 'ask', question: e.text, ...(e.data !== undefined ? { data: e.data } : {}), answer: { type: 'text' }, saveAs: `decision${e.seq}`, note: 'a judgment you made by hand: turn it into a pick / choice / boolean question on the data it is about' });
     }
   }
-  if (!steps.length) throw new RpaError('INPUT_INVALID', `task "${name}" has no usable entries${opts.from != null || opts.to != null ? ' in that range' : ''} (only successful act steps, recipe runs and notes become steps)`);
+  if (!steps.length) throw new RecipeError('INPUT_INVALID', `task "${name}" has no usable entries${opts.from != null || opts.to != null ? ' in that range' : ''} (only successful act steps, recipe runs and notes become steps)`);
   // parameterize: replace literal values by input references
   let body = JSON.stringify(steps);
   for (const [k, v] of Object.entries(opts.params || {})) {
@@ -193,7 +193,7 @@ export function draftFromJournal(name: string, opts: DraftOptions = {}) {
     let hit = false;
     if (enc !== v && body.includes(JSON.stringify(enc).slice(1, -1))) { body = body.replace(new RegExp(esc(enc), 'g'), `{{inputs.${k} | urlencode}}`); hit = true; }
     if (body.includes(JSON.stringify(v).slice(1, -1))) { body = body.replace(new RegExp(esc(v), 'g'), `{{inputs.${k}}}`); hit = true; }
-    if (!hit) throw new RpaError('INPUT_INVALID', `--param ${k}: the value "${v}" does not appear in the selected entries`);
+    if (!hit) throw new RecipeError('INPUT_INVALID', `--param ${k}: the value "${v}" does not appear in the selected entries`);
     inputs[k] = { type: 'string', default: v };
   }
   const finalSteps = JSON.parse(body);

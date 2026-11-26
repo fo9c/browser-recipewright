@@ -8,13 +8,14 @@ import { validateTemplate } from './validate.js';
 import { loadTemplate, listTemplates, saveTemplate } from './library.js';
 import { Runner, defaultProfile, coerceInputs } from './engine.js';
 import { render } from './render.js';
-import { connect, launchChrome, getSession, closeSession, disconnect, listSessions, findChrome, refsFile, profilesList, profileDir } from './browser.js';
+import { connect, launchChrome, getSession, closeSession, disconnect, listSessions, findChrome, refsFile, profilesList, profileDir, resolveProfile } from './browser.js';
 import { inpageCall } from './inpage.js';
 import { evalCond } from './conditions.js';
 import { countTarget, textOfTarget } from './locator.js';
 import { listRuns, readSteps } from './records.js';
 import { patchTemplateFile } from './heal.js';
-import { runBatch, usageToday } from './batch.js';
+import { runBatch } from './batch.js';
+import { usageOf } from './usage.js';
 import { buildJsonSchema } from './schema.js';
 import { checkRunDir, EVENTS_FILE, buildRunEventsJsonSchema } from './events.js';
 import { startDemoServer } from './demo.js';
@@ -22,7 +23,7 @@ import { checkRecipeCalls } from './flow.js';
 import { startTask, endTask, currentTask, readJournal, listTasks, journal, taskRhythm, draftFromJournal, taskDir } from './task.js';
 import { preview as previewData } from './events.js';
 import { recordAnswer, listPending, readPendingAsk, parseAnswerValue, type PendingAsk } from './ask.js';
-import { readJson, writeJson, homeDir, dirs, log, sleep, RpaError, PKG_ROOT } from './util.js';
+import { readJson, writeJson, homeDir, dirs, log, sleep, RecipeError, PKG_ROOT } from './util.js';
 
 const pkg = readJson(path.join(PKG_ROOT, 'package.json'));
 const program = new Command();
@@ -44,7 +45,7 @@ async function softGoto(page: any, url: string, timeoutMs = Number(process.env.B
       log.info(`⚠️ ${w}`);
       return w;
     }
-    throw new RpaError('NAVIGATION_FAILED', `could not open ${url}: ${String(e?.message || e).split('\n')[0]}`);
+    throw new RecipeError('NAVIGATION_FAILED', `could not open ${url}: ${String(e?.message || e).split('\n')[0]}`);
   }
 }
 
@@ -53,7 +54,7 @@ function parseInputs(pairs: string[] = [], json?: string): Record<string, any> {
   if (json) base = JSON.parse(json.startsWith('@') ? fs.readFileSync(json.slice(1), 'utf8') : json);
   for (const p of pairs) {
     const i = p.indexOf('=');
-    if (i < 1) throw new RpaError('INPUT_INVALID', `--input expects key=value, got "${p}"`);
+    if (i < 1) throw new RecipeError('INPUT_INVALID', `--input expects key=value, got "${p}"`);
     base[p.slice(0, i)] = p.slice(i + 1);
   }
   return base;
@@ -64,8 +65,24 @@ function exitCodeFor(code?: string) {
   if (!code) return 0;
   if (code === 'ASK_PENDING') return 4;
   if (['LOGIN_REQUIRED', 'CHALLENGE_DETECTED', 'HANDOFF_REQUIRED', 'BROWSER_ERROR'].includes(code)) return 3;
-  if (['INPUT_INVALID', 'TEMPLATE_INVALID', 'TEMPLATE_NOT_FOUND', 'PATCH_INVALID', 'BATCH_INVALID', 'ANSWER_INVALID'].includes(code)) return 2;
+  if (['INPUT_INVALID', 'TEMPLATE_INVALID', 'TEMPLATE_NOT_FOUND', 'PATCH_INVALID', 'BATCH_INVALID', 'ANSWER_INVALID', 'PROFILE_AMBIGUOUS'].includes(code)) return 2;
   return 1;
+}
+
+const PROFILE_HELP = 'profile <site>/<account> (default: the running browser if only one is running)';
+
+/** Fill o.profile by the shared rule (see resolveProfile) and say which one was picked when it was not given. */
+async function pickProfile(o: any, extra: { url?: string; urlFirst?: boolean } = {}) {
+  const r = await resolveProfile({ explicit: o.profile, ...extra });
+  if (r.why !== '-p') log.info(`profile: ${r.profile} (${r.why})`);
+  o.profile = r.profile;
+  return r.profile;
+}
+
+function dialogsOpt(v?: string): 'dismiss' | 'accept' | undefined {
+  if (v === undefined) return undefined;
+  if (v !== 'dismiss' && v !== 'accept') throw new RecipeError('INPUT_INVALID', '--dialogs must be dismiss or accept');
+  return v;
 }
 
 function wrap(fn: (...a: any[]) => Promise<any>) {
@@ -119,10 +136,11 @@ program
 program
   .command('launch')
   .description('start (or reuse) a Chrome window for a profile and keep it running for snapshot/act')
-  .option('-p, --profile <site/account>', 'profile, e.g. example.com/main', 'default/default')
+  .option('-p, --profile <site/account>', 'profile, e.g. example.com/main (default: <url host>/default, else the running browser, else default/default)')
   .option('-u, --url <url>', 'open this URL')
   .option('--headless', 'no window')
   .action(wrap(async (o) => {
+    await pickProfile(o, { url: o.url, urlFirst: true });
     const existing = await getSession(o.profile);
     const s = existing ?? (await launchChrome(o.profile, { headless: o.headless }));
     let warning: string | null = null;
@@ -142,10 +160,10 @@ program
 program
   .command('close')
   .description('close the Chrome window of a profile (or --all)')
-  .option('-p, --profile <site/account>', 'profile', 'default/default')
+  .option('-p, --profile <site/account>', PROFILE_HELP)
   .option('--all', 'close every session')
   .action(wrap(async (o) => {
-    const targets = o.all ? (await listSessions()).map((s) => s.profile) : [o.profile];
+    const targets = o.all ? (await listSessions()).map((s) => s.profile) : [await pickProfile(o)];
     const closed: string[] = [];
     for (const p of targets) if (await closeSession(p)) closed.push(p);
     out({ status: 'ok', closed });
@@ -165,20 +183,20 @@ program
     let tpl: any = null;
     try { tpl = loadTemplate(ref).template; } catch {}
     const site = tpl ? tpl.site[0] : ref.replace(/^https?:\/\//, '').split('/')[0];
-    const profile = o.profile || (tpl ? defaultProfile(tpl) : `${site}/default`);
+    const profile = (await resolveProfile({ explicit: o.profile, site })).profile;
     // templates may build the login URL from inputs ({{inputs.base}}): fill them (defaults + --input) first
     const scope: any = { inputs: {}, vars: {}, account: {} };
     if (tpl) {
       const raw = parseInputs(o.input);
       const needed = new Set(Object.keys(tpl.inputs || {}));
       const tplLite = { inputs: Object.fromEntries(Object.entries<any>(tpl.inputs || {}).map(([k, d]) => [k, { ...d, required: d.default !== undefined || k in raw ? d.required : false }])) };
-      for (const k of Object.keys(raw)) if (!needed.has(k)) throw new RpaError('INPUT_INVALID', `unknown input "${k}"`);
+      for (const k of Object.keys(raw)) if (!needed.has(k)) throw new RecipeError('INPUT_INVALID', `unknown input "${k}"`);
       scope.inputs = coerceInputs(tplLite, raw);
     }
     const rawUrl = tpl?.account?.loginUrl || tpl?.account?.checkUrl || (ref.startsWith('http') ? ref : `https://${site}/`);
     const url = String(render(rawUrl, scope) ?? '');
     if (!/^https?:\/\/[^/]/.test(url)) {
-      throw new RpaError('INPUT_INVALID', `login URL "${rawUrl}" became "${url}"; pass the missing input, e.g. browser-recipewright login ${ref} -i base=http://127.0.0.1:4173`);
+      throw new RecipeError('INPUT_INVALID', `login URL "${rawUrl}" became "${url}"; pass the missing input, e.g. browser-recipewright login ${ref} -i base=http://127.0.0.1:4173`);
     }
     const c = await connect(profile);
     await softGoto(c.page, url);
@@ -206,11 +224,12 @@ program
 program
   .command('screenshot')
   .description('save a PNG of the current page of a running session')
-  .option('-p, --profile <site/account>', 'profile', 'default/default')
+  .option('-p, --profile <site/account>', PROFILE_HELP)
   .option('-u, --url <url>', 'navigate first')
   .option('-o, --out <file>', 'output file (default: ~/.browser-recipewright/screenshots/<profile>-<time>.png)')
   .option('--full', 'whole page, not just the visible part')
   .action(wrap(async (o) => {
+    await pickProfile(o, { url: o.url });
     const c = await connect(o.profile);
     try {
       const warning = o.url ? await softGoto(c.page, o.url) : null;
@@ -225,13 +244,14 @@ program
 
 program
   .command('snapshot')
-  .description('print an outline of the current page with [ref=rN] ids and ready-made locator candidates')
-  .option('-p, --profile <site/account>', 'profile', 'default/default')
+  .description('print an outline of the current page with stable [ref=…] ids (same element → same id across snapshots) and ready-made locator candidates')
+  .option('-p, --profile <site/account>', PROFILE_HELP)
   .option('-u, --url <url>', 'navigate first')
   .option('--max <n>', 'max nodes', '300')
   .option('--text', 'also include plain text nodes')
   .option('--json', 'print JSON (includes locator candidates for every ref)')
   .action(wrap(async (o) => {
+    await pickProfile(o, { url: o.url });
     const c = await connect(o.profile);
     try {
       if (o.url) await softGoto(c.page, o.url);
@@ -247,21 +267,26 @@ program
 program
   .command('act <action>')
   .description('run ONE step against the live session, with the same semantics as a template step')
-  .option('-p, --profile <site/account>', 'profile', 'default/default')
-  .option('--ref <ref>', 'use locator candidates of a snapshot ref (e.g. r12)')
+  .option('-p, --profile <site/account>', PROFILE_HELP)
+  .option('--ref <ref>', 'use locator candidates of a snapshot ref (e.g. rk3x9a)')
   .option('--target <json>', 'locator candidates as JSON array')
   .option('--step <json>', 'full step JSON (overrides other flags)')
   .option('--url <url>').option('--value <v>').option('--text <t>').option('--key <k>').option('--fields <json>').option('--by <n>').option('--ms <n>')
   .option('--no-humanize', 'plain fast input')
   .option('--screenshot', 'take a screenshot after the step (path printed as "screenshot")')
+  .option('--dialogs <mode>', 'if the step opens an alert / confirm / prompt: dismiss (default) or accept')
   .action(wrap(async (action, o) => {
+    const dialogs = dialogsOpt(o.dialogs);
+    await pickProfile(o, { url: o.url });
     let step: any = o.step ? JSON.parse(o.step) : { action };
     if (o.screenshot) step.screenshot = true;
     step.id ??= 'act';
     step.action ??= action;
     if (o.ref) {
-      const refs = readJson(refsFile(o.profile)).refs;
-      if (!refs[o.ref]) throw new RpaError('INPUT_INVALID', `ref ${o.ref} not in last snapshot; run snapshot again`);
+      if (!fs.existsSync(refsFile(o.profile))) throw new RecipeError('INPUT_INVALID', `no snapshot for profile ${o.profile} yet; run snapshot first`);
+      const snap = readJson(refsFile(o.profile));
+      const refs = snap.refs;
+      if (!refs[o.ref]) throw new RecipeError('INPUT_INVALID', `ref ${o.ref} is not in the last snapshot (${snap.url}); the page may have changed, run snapshot again`);
       step[action === 'download' ? 'trigger' : action === 'collect' ? 'item' : 'target'] = refs[o.ref];
     }
     if (o.target) step.target = JSON.parse(o.target);
@@ -275,7 +300,7 @@ program
     try {
       if (!step.saveAs) step.saveAs = '_act_out';
       const tpl = { id: '_act', version: '0.0.0', title: 'act', site: ['*'], defaults: { humanize: o.humanize }, steps: [step] };
-      const runner = new Runner({ loaded: { template: tpl, path: '(act)', source: 'file' }, connected: c, runsDir: path.join(dirs.runs(), '_act'), skipLoginCheck: true, handoff: 'never' });
+      const runner = new Runner({ loaded: { template: tpl, path: '(act)', source: 'file' }, connected: c, runsDir: path.join(dirs.runs(), '_act'), skipLoginCheck: true, handoff: 'never', dialogs });
       const res = await runner.run();
       const rec = readSteps(res.runDir).find((s) => s.stepId === step.id);
       const value = res.output?.[step.saveAs] ?? null;
@@ -348,14 +373,16 @@ program
   .option('--resume <runDir>', 'continue a failed or interrupted run: skips finished steps and finished forEach items (reuses saved variables)')
   .option('--handoff-timeout <min>', 'minutes to wait for a human', '15')
   .option('--on-ask <mode>', 'ask steps (breakpoints): pause = stop and wait for the agent (default) · default = use the step default · fail', 'pause')
+  .option('--dialogs <mode>', 'alert / confirm / prompt dialogs: dismiss or accept (default: the template\'s defaults.dialogs, else dismiss)')
   .action(wrap(async (ref, o) => {
-    if (!['pause', 'default', 'fail'].includes(o.onAsk)) throw new RpaError('INPUT_INVALID', '--on-ask must be pause, default or fail');
+    const dialogs = dialogsOpt(o.dialogs);
+    if (!['pause', 'default', 'fail'].includes(o.onAsk)) throw new RecipeError('INPUT_INVALID', '--on-ask must be pause, default or fail');
     const loaded = loadTemplate(ref);
     await taskRhythm();
     const runner = new Runner({
       loaded, inputs: parseInputs(o.input, o.inputs), profile: o.profile, headless: o.headless, keepOpen: o.keepOpen,
       handoff: o.handoff === false ? 'never' : 'auto', humanize: o.humanize === false ? false : undefined,
-      screenshots: o.screenshots, resumeFrom: o.resume, handoffTimeoutMs: Number(o.handoffTimeout) * 60000, onAsk: o.onAsk,
+      screenshots: o.screenshots, resumeFrom: o.resume, handoffTimeoutMs: Number(o.handoffTimeout) * 60000, onAsk: o.onAsk, dialogs,
     });
     printRunResult(await runner.run(), 'run');
   }));
@@ -404,13 +431,13 @@ program
   .action(wrap(async (dir, o) => {
     const runDir = dir ?? (() => {
       const p = listPending();
-      if (!p.length) throw new RpaError('INPUT_INVALID', 'no run is waiting for an answer');
-      if (p.length > 1) throw new RpaError('INPUT_INVALID', `${p.length} runs are waiting for an answer; pass the run directory (see: browser-recipewright pending)`);
+      if (!p.length) throw new RecipeError('INPUT_INVALID', 'no run is waiting for an answer');
+      if (p.length > 1) throw new RecipeError('INPUT_INVALID', `${p.length} runs are waiting for an answer; pass the run directory (see: browser-recipewright pending)`);
       return p[0].runDir;
     })();
     const ask = readPendingAsk(runDir);
     if (!o.continueOnly) {
-      if (o.value === undefined && !o.valueFile) throw new RpaError('INPUT_INVALID', 'give the answer with --value <answer> (or --value-file <file>)');
+      if (o.value === undefined && !o.valueFile) throw new RecipeError('INPUT_INVALID', 'give the answer with --value <answer> (or --value-file <file>)');
       const raw = o.valueFile ? JSON.parse(fs.readFileSync(o.valueFile, 'utf8')) : parseAnswerValue(o.value);
       const { value } = recordAnswer(runDir, raw);
       log.info(`✓ answer stored for ${ask?.path}: ${JSON.stringify(value).slice(0, 200)}`);
@@ -446,7 +473,7 @@ task
     let gapMs: any;
     if (o.gap) {
       const m = String(o.gap).match(/^(\d+)(?:-(\d+))?$/);
-      if (!m) throw new RpaError('INPUT_INVALID', '--gap expects milliseconds like 3000 or 2000-6000');
+      if (!m) throw new RecipeError('INPUT_INVALID', '--gap expects milliseconds like 3000 or 2000-6000');
       gapMs = m[2] ? [Number(m[1]), Number(m[2])] : Number(m[1]);
     }
     const t = startTask(name, { gapMs, note: o.note });
@@ -459,7 +486,7 @@ task
   .description('record a decision you made (it becomes an ask breakpoint in a draft)')
   .option('--data <json>', 'the data the decision was about (JSON)')
   .action(wrap(async (text, o) => {
-    if (!currentTask()) throw new RpaError('INPUT_INVALID', 'no current task; start one with: browser-recipewright task start <name>');
+    if (!currentTask()) throw new RecipeError('INPUT_INVALID', 'no current task; start one with: browser-recipewright task start <name>');
     const e = journal({ type: 'decision', text, ...(o.data ? { data: JSON.parse(o.data) } : {}) });
     out({ status: 'ok', entry: e });
   }));
@@ -469,7 +496,7 @@ task
   .description('print the journal of a task (default: the current one)')
   .action(wrap(async (name) => {
     const n = name ?? currentTask()?.name;
-    if (!n) throw new RpaError('INPUT_INVALID', 'no current task; pass a name (see: browser-recipewright task list)');
+    if (!n) throw new RecipeError('INPUT_INVALID', 'no current task; pass a name (see: browser-recipewright task list)');
     const entries = readJournal(n);
     for (const e of entries) log.info(`${String(e.seq).padStart(3)} ${e.type.padEnd(8)} ${e.type === 'act' ? `${e.step?.action} ${e.status}` : e.type === 'decision' ? e.text : `${e.templateId} ${e.status}${e.ask ? ` ⏸ ${e.ask.question}` : ''}`}`);
     out({ status: 'ok', task: n, entries });
@@ -496,7 +523,7 @@ task
   .option('-o, --out <file>', 'where to write it (default: <task folder>/draft.json)')
   .action(wrap(async (name, o) => {
     const n = name ?? currentTask()?.name;
-    if (!n) throw new RpaError('INPUT_INVALID', 'no current task; pass a name (see: browser-recipewright task list)');
+    if (!n) throw new RecipeError('INPUT_INVALID', 'no current task; pass a name (see: browser-recipewright task list)');
     const params = parseInputs(o.param);
     const r = draftFromJournal(n, { from: o.from ? Number(o.from) : undefined, to: o.to ? Number(o.to) : undefined, id: o.id, title: o.title, params });
     const file = path.resolve(o.out || path.join(taskDir(n), 'draft.json'));
@@ -558,7 +585,7 @@ program
 function runDirOrLatest(dir?: string): string {
   if (dir) return dir;
   const f = path.join(dirs.runs(), '_latest.json');
-  if (!fs.existsSync(f)) throw new RpaError('INPUT_INVALID', 'no run yet (runs/_latest.json not found); pass a run directory');
+  if (!fs.existsSync(f)) throw new RecipeError('INPUT_INVALID', 'no run yet (runs/_latest.json not found); pass a run directory');
   return readJson(f).runDir;
 }
 
@@ -570,8 +597,8 @@ program
   .action(wrap(async (dir, o) => {
     const runDir = runDirOrLatest(dir);
     const file = path.join(runDir, EVENTS_FILE);
-    if (!fs.existsSync(path.join(runDir, 'run.json'))) throw new RpaError('INPUT_INVALID', `${runDir} is not a run directory (no run.json)`);
-    if (!fs.existsSync(file)) throw new RpaError('INPUT_INVALID', `${runDir} has no ${EVENTS_FILE} (a run from before the v1 run data format)`);
+    if (!fs.existsSync(path.join(runDir, 'run.json'))) throw new RecipeError('INPUT_INVALID', `${runDir} is not a run directory (no run.json)`);
+    if (!fs.existsSync(file)) throw new RecipeError('INPUT_INVALID', `${runDir} has no ${EVENTS_FILE} (a run from before the v1 run data format)`);
     let pos = 0;
     let rest = '';
     let ended = false;
@@ -647,24 +674,25 @@ program
 // ---------------- batch & accounts ----------------
 program
   .command('batch [batchFile]')
-  .description('run a template for many accounts (spacing, daily caps, skip expired logins, resume)')
+  .description('run a template for many accounts (spacing, usage reminder per site+account, skip expired logins, merged result table, resume; optionally several browsers at once)')
   .option('--resume <batchDir>', 'resume an interrupted batch (completed jobs are not repeated)')
   .option('--retry-failed', 'with --resume: also rerun failed jobs')
   .option('--dry-run', 'only print the job plan')
   .option('--headless', 'run without windows')
+  .option('--parallel <n>', 'browsers at once, each with its own profile (default: batch.json "parallel", else 1)')
   .action(wrap(async (file, o) => {
-    if (!file && !o.resume) throw new RpaError('BATCH_INVALID', 'give a batch file or --resume <batchDir>');
-    const r: any = await runBatch({ file, resumeDir: o.resume, retryFailed: o.retryFailed, dryRun: o.dryRun, headless: o.headless });
+    if (!file && !o.resume) throw new RecipeError('BATCH_INVALID', 'give a batch file or --resume <batchDir>');
+    const r: any = await runBatch({ file, resumeDir: o.resume, retryFailed: o.retryFailed, dryRun: o.dryRun, headless: o.headless, parallel: o.parallel === undefined ? undefined : Number(o.parallel) });
     out({ status: r.stopped ? 'paused' : 'ok', ...r, rows: undefined, jobs: r.dryRun ? r.jobs : undefined });
   }));
 
 program
   .command('accounts')
-  .description('list local browser profiles (accounts), running sessions and today\'s usage')
+  .description('list local browser profiles (accounts), running sessions and runs / items today per site+account')
   .action(wrap(async () => {
     const sessions = await listSessions();
-    const rows = profilesList().filter((p) => !p.startsWith('_')).map((p) => ({ profile: p, running: sessions.some((s) => s.profile === p), usageToday: usageToday(p.split('/')[1] || p) }));
-    for (const r of rows) log.info(`${r.running ? '●' : '○'} ${r.profile}  today=${r.usageToday}`);
+    const rows = profilesList().filter((p) => !p.startsWith('_')).map((p) => ({ profile: p, running: sessions.some((s) => s.profile === p), usage: usageOf(p) }));
+    for (const r of rows) log.info(`${r.running ? '●' : '○'} ${r.profile}  today: ${r.usage.runsToday} runs, ${r.usage.itemsToday} items`);
     out({ status: 'ok', home: homeDir(), accounts: rows });
   }));
 

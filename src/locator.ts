@@ -1,6 +1,6 @@
 /** Candidate locators → one element. The first candidate matching exactly one element wins. */
 import type { Page, Locator, FrameLocator } from 'patchright';
-import { RpaError, sleep } from './util.js';
+import { RecipeError, sleep } from './util.js';
 
 export interface LocatorTry {
   candidate: number;
@@ -27,7 +27,7 @@ export function buildLocator(root: Root, c: any): Locator {
   else if (c.title !== undefined) loc = r.getByTitle(c.title, { exact });
   else if (c.css !== undefined) loc = r.locator(c.css);
   else if (c.xpath !== undefined) loc = r.locator('xpath=' + c.xpath);
-  else throw new RpaError('TEMPLATE_INVALID', 'locator candidate has no locator key');
+  else throw new RecipeError('TEMPLATE_INVALID', 'locator candidate has no locator key');
   if (c.visible !== false) loc = loc.filter({ visible: true });
   if (c.nth !== undefined) loc = c.nth === -1 ? loc.last() : loc.nth(c.nth);
   return loc;
@@ -73,13 +73,36 @@ export async function resolveTarget(page: Page, target: any[], timeoutMs: number
     await sleep(250);
   }
   const ambiguous = last.tried.some((t) => t.matches > 1);
-  throw new RpaError(
+  throw new RecipeError(
     ambiguous ? 'LOCATOR_AMBIGUOUS' : 'LOCATOR_NOT_FOUND',
     ambiguous
       ? `no candidate matched exactly one element (${last.tried.map((t) => `#${t.candidate}:${t.matches}`).join(', ')}); add nth or within`
       : `no candidate matched any element after ${timeoutMs}ms`,
     { locator: last },
   );
+}
+
+/**
+ * Wait until some candidate matches at least one element (waitFor: "is it on the page yet?").
+ * Unlike resolveTarget, several matches are fine: waiting for "the result list" must not fail
+ * just because the list has 20 rows.
+ */
+export async function waitPresent(page: Page, target: any[], timeoutMs: number): Promise<LocatorInfo & { matches: number }> {
+  const deadline = Date.now() + timeoutMs;
+  let tried: LocatorTry[] = [];
+  for (;;) {
+    tried = [];
+    for (let i = 0; i < target.length; i++) {
+      const c = target[i];
+      const root = await withinRoot(page, c);
+      const n = root ? await buildLocator(root, c).count().catch(() => 0) : 0;
+      tried.push({ candidate: i, matches: n });
+      if (n >= 1) return { tried, hit: i, matches: n };
+    }
+    if (Date.now() >= deadline) break;
+    await sleep(250);
+  }
+  throw new RecipeError('LOCATOR_NOT_FOUND', `waitFor: no candidate matched any element after ${timeoutMs}ms`, { locator: { tried, hit: null } });
 }
 
 /** Count matches of the first candidate that matches anything. */

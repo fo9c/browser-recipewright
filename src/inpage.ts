@@ -191,9 +191,22 @@ export const INPAGE_LIB = String.raw`(() => {
     push({ css: cssPath(el) });
     return cands.slice(0, 4);
   };
+  // Ref ids come from what the element IS (role, name, testid, link, field), not from its position in
+  // the walk, so the same button keeps the same ref across snapshots even when content above it changes.
+  // Look-alikes (20 "Like" buttons) get -2, -3 ... in page order.
+  const hash36 = (str) => {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(36).padStart(5, '0').slice(-5);
+  };
+  const fingerprint = (el, r, name) => {
+    const parts = [r || el.tagName.toLowerCase(), name || '', el.getAttribute('data-testid') || '', el.getAttribute('placeholder') || '', el.getAttribute('name') || '', (el.getAttribute('href') || '').split('#')[0]];
+    if (!parts.slice(1).some(Boolean)) parts.push(cssPath(el).replace(/:nth-of-type\(\d+\)/g, ''));
+    return parts.join('|');
+  };
   const snapshot = (opts) => {
     const max = opts.max || 300;
-    const lines = [], refs = {};
+    const lines = [], refs = {}, seen = {};
     let n = 0, truncated = false;
     const walk = (el, depth) => {
       if (n >= max) { truncated = true; return; }
@@ -205,9 +218,11 @@ export const INPAGE_LIB = String.raw`(() => {
       let d = depth;
       if (interesting && isVisible(el)) {
         n++;
-        const ref = 'r' + n;
         const LABEL_ONLY = ['main','navigation','region','form','banner','complementary','dialog','list','table'];
         const name = r && LABEL_ONLY.includes(r) ? norm(el.getAttribute('aria-label')) : accName(el);
+        const base = 'r' + hash36(fingerprint(el, r, name));
+        seen[base] = (seen[base] || 0) + 1;
+        const ref = seen[base] === 1 ? base : base + '-' + seen[base];
         let line = '  '.repeat(depth) + '- ' + (r || el.tagName.toLowerCase());
         if (name) line += ' "' + name.slice(0, 80).replace(/"/g, "'") + '"';
         if (tid) line += ' [testid=' + tid + ']';

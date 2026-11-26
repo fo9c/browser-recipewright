@@ -158,6 +158,8 @@ export const EVENT_SCHEMAS: Record<string, z.ZodTypeAny> = {
   'handoff.start': z.looseObject({ reason: z.string(), code: z.string() }),
   'handoff.end': z.looseObject({ waitedMs: z.number(), resolved: z.boolean() }),
   artifact: z.looseObject({ path: z.string(), kind: z.string() }),
+  // a JS dialog (alert / confirm / prompt / beforeunload) popped up and was answered by the dialogs policy (additive)
+  dialog: z.looseObject({ dialogType: z.string(), message: z.string(), action: z.enum(['accept', 'dismiss']) }),
   // breakpoints (added in v1, additive): the agent decides something in the middle of a run
   'ask.start': z.looseObject({ step: z.number().int(), path: z.string(), stepId: z.string(), question: z.string(), answerType: z.string() }),
   'ask.answered': z.looseObject({ step: z.number().int(), path: z.string(), stepId: z.string(), source: z.enum(['agent', 'default']) }),

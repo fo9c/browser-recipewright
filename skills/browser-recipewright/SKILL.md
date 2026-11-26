@@ -34,10 +34,10 @@ If one fits, skip to step 4.
 
 ```bash
 browser-recipewright launch -p example.com/main --url "https://example.com/" # opens/reuses that account's Chrome
-browser-recipewright snapshot -p example.com/main                              # outline with [ref=rN]
+browser-recipewright snapshot -p example.com/main                              # outline with stable [ref=r…] ids
 browser-recipewright snapshot -p example.com/main --json                       # same + locator candidates per ref
 browser-recipewright screenshot -p example.com/main -o page.png [--full]       # look at the page yourself (PNG); act --screenshot does it after a step
-browser-recipewright act click --ref r12 -p example.com/main                   # try ONE step, same semantics as a template step
+browser-recipewright act click --ref rk3x9a -p example.com/main                # try ONE step, same semantics as a template step
 browser-recipewright act fill --ref r5 --value "hello" -p example.com/main
 browser-recipewright act read --ref r20 --fields '{"text":{"text":true}}' -p example.com/main
 browser-recipewright act goto --url "https://example.com/search?q=ai" -p example.com/main
@@ -46,6 +46,7 @@ browser-recipewright act collect --step '{"item":[{"testid":"post"}],"fields":{.
 #   fieldsEmpty tells you which field locator is wrong before you put the step in a template
 ```
 - Profiles are `<site>/<account>`; each is a separate Chrome user-data-dir with its own login.
+- Without `-p` every command picks the profile the same way: a recipe → `<recipe site>/default`; `launch --url` → `<host>/default`; otherwise the only running browser; several running → `PROFILE_AMBIGUOUS` (pass `-p`); nothing running → `<url host>/default` or `default/default`. The picked profile is printed on stderr.
 - `snapshot --json` gives, for each ref, candidates already checked to match exactly one element. Copy them into `target`.
 - Prefer navigating by URL (`goto` with `{{inputs.x | urlencode}}`) over typing into search boxes: fewer steps, more stable.
 - If you see a login wall or captcha: stop and ask the human (`browser-recipewright login <template> -p <profile>`; if the template's URL uses inputs, pass them: `-i base=...`). Never try to bypass a captcha.
@@ -177,7 +178,7 @@ browser-recipewright task show                                                  
 
 ## 7. Many accounts
 
-Write a `batch.json` (see `references/batch.md`) and run `browser-recipewright batch batch.json`. Each account uses its own profile and gets its own run record; expired logins are skipped and listed; `--resume <batchDir>` never repeats finished jobs. Keep spacing and daily caps conservative and remind the human that platforms forbid coordinated inauthentic activity.
+Write a `batch.json` (see `references/batch.md`) and run `browser-recipewright batch batch.json`. Each account uses its own profile and gets its own run record; expired logins are skipped and listed; `--resume <batchDir>` never repeats finished jobs. Keep spacing conservative (use `remindAfter` for a daily reminder; `parallel` only when needed) and remind the human that platforms forbid coordinated inauthentic activity.
 
 ## Boundaries
 

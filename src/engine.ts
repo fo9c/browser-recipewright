@@ -7,10 +7,10 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import readline from 'node:readline';
 import type { Page } from 'patchright';
-import { connect, closeSession, disconnect, type Connected } from './browser.js';
+import { connect, closeSession, disconnect, siteKey, type Connected } from './browser.js';
 import { render, Scope, FILTERS, parseCount } from './render.js';
 import { evalCond, type PageProbe, type CondResult } from './conditions.js';
-import { resolveTarget, countTarget, textOfTarget } from './locator.js';
+import { resolveTarget, countTarget, textOfTarget, waitPresent } from './locator.js';
 import { inpageCall, inpageElementFn } from './inpage.js';
 import * as human from './human.js';
 import { preview } from './events.js';
@@ -20,9 +20,10 @@ import { loadScriptCode, hostMatches } from './scripts.js';
 import { validateTemplate } from './validate.js';
 import { appendTargets } from './schema.js';
 import { coerceAnswer, readPendingAsk, ASK_FILE, type PendingAsk } from './ask.js';
+import { recordUsage, itemsOf } from './usage.js';
 import { resolveRecipe, checkRecipeCalls, MAX_RECIPE_DEPTH } from './flow.js';
 import type { LoadedTemplate } from './library.js';
-import { RpaError, sleep, pickMs, log, truncateForRecord, readJson, writeJson, ENV_ERROR_CODES } from './util.js';
+import { RecipeError, sleep, pickMs, log, truncateForRecord, readJson, writeJson, ENV_ERROR_CODES } from './util.js';
 
 export interface RunOptions {
   loaded: LoadedTemplate;
@@ -44,6 +45,17 @@ export interface RunOptions {
   onAsk?: 'pause' | 'default' | 'fail';
   /** continue a run that is paused at an ask step, in the same run directory (the answer is in its state.json) */
   continueRun?: string;
+  /** alert / confirm / prompt dialogs: dismiss (default) or accept. Overrides the template's defaults.dialogs */
+  dialogs?: 'dismiss' | 'accept';
+}
+
+export interface DialogPolicy {
+  action: 'dismiss' | 'accept';
+  promptText?: string;
+}
+export function dialogPolicy(fromTemplate: any, override?: 'dismiss' | 'accept'): DialogPolicy {
+  const t: DialogPolicy = typeof fromTemplate === 'string' ? { action: fromTemplate as any } : fromTemplate?.action ? fromTemplate : { action: 'dismiss' };
+  return override ? { ...t, action: override } : t;
 }
 
 export interface RunResult {
@@ -58,7 +70,7 @@ export interface RunResult {
 }
 
 /** Thrown by an ask step that has no answer yet: unwinds the run without failing it. */
-class AskPause extends RpaError {
+class AskPause extends RecipeError {
   ask: PendingAsk;
   constructor(ask: PendingAsk) {
     super('ASK_PENDING', `waiting for the agent to answer: ${ask.question}`);
@@ -66,10 +78,10 @@ class AskPause extends RpaError {
   }
 }
 
-class StepFailure extends RpaError {
+class StepFailure extends RecipeError {
   stepId: string;
   stepPath: string;
-  constructor(err: RpaError, stepId: string, stepPath: string) {
+  constructor(err: RecipeError, stepId: string, stepPath: string) {
     super(err.code, err.message, err.details);
     this.stepId = stepId;
     this.stepPath = stepPath;
@@ -79,29 +91,30 @@ class StepFailure extends RpaError {
 const CONTROL = new Set(['if', 'forEach', 'while', 'group', 'recipe']);
 const RAW_KEYS = new Set(['expect', 'filter', 'until', 'that', 'when', 'do', 'then', 'else', 'steps', 'collectFrom', 'fields', 'item', 'in']);
 
+/** Same rule as resolveProfile step 2: <recipe site>/default ("*" → default/default). */
 export function defaultProfile(tpl: any): string {
-  return `${(tpl.site?.[0] || 'default').replace(/^\*\./, '')}/default`;
+  return `${siteKey(tpl.site?.[0]) || 'default'}/default`;
 }
 
 export function coerceInputs(tpl: any, raw: Record<string, any> = {}): Record<string, any> {
   const defs = tpl.inputs || {};
   const out: Record<string, any> = {};
-  for (const k of Object.keys(raw)) if (!(k in defs)) throw new RpaError('INPUT_INVALID', `unknown input "${k}" (template accepts: ${Object.keys(defs).join(', ') || 'none'})`);
+  for (const k of Object.keys(raw)) if (!(k in defs)) throw new RecipeError('INPUT_INVALID', `unknown input "${k}" (template accepts: ${Object.keys(defs).join(', ') || 'none'})`);
   for (const [k, d] of Object.entries<any>(defs)) {
     let v = raw[k] !== undefined ? raw[k] : d.default;
     if (v === undefined) {
       if (d.required === false) continue;
-      throw new RpaError('INPUT_INVALID', `missing required input "${k}"${d.description ? ` (${d.description})` : ''}. Pass --input ${k}=...`);
+      throw new RecipeError('INPUT_INVALID', `missing required input "${k}"${d.description ? ` (${d.description})` : ''}. Pass --input ${k}=...`);
     }
     if (d.type === 'integer' || d.type === 'number') {
       const n = Number(v);
-      if (!Number.isFinite(n) || (d.type === 'integer' && !Number.isInteger(n))) throw new RpaError('INPUT_INVALID', `input "${k}" must be ${d.type}, got ${JSON.stringify(v)}`);
+      if (!Number.isFinite(n) || (d.type === 'integer' && !Number.isInteger(n))) throw new RecipeError('INPUT_INVALID', `input "${k}" must be ${d.type}, got ${JSON.stringify(v)}`);
       v = n;
     } else if (d.type === 'boolean') v = v === true || v === 'true' || v === '1' || v === 1;
     else if ((d.type === 'array' || d.type === 'object') && typeof v === 'string') {
-      try { v = JSON.parse(v); } catch { throw new RpaError('INPUT_INVALID', `input "${k}" must be JSON ${d.type}`); }
+      try { v = JSON.parse(v); } catch { throw new RecipeError('INPUT_INVALID', `input "${k}" must be JSON ${d.type}`); }
     } else if (d.type === 'string') v = String(v);
-    if (d.enum && !d.enum.includes(v)) throw new RpaError('INPUT_INVALID', `input "${k}" must be one of ${JSON.stringify(d.enum)}`);
+    if (d.enum && !d.enum.includes(v)) throw new RecipeError('INPUT_INVALID', `input "${k}" must be one of ${JSON.stringify(d.enum)}`);
     out[k] = v;
   }
   return out;
@@ -113,15 +126,15 @@ export function maskInputs(tpl: any, inputs: Record<string, any>) {
   return out;
 }
 
-function normalizeError(e: any): RpaError {
-  if (e instanceof RpaError) return e;
+function normalizeError(e: any): RecipeError {
+  if (e instanceof RecipeError) return e;
   const msg = String(e?.message || e);
-  if (/has been closed|Target closed|Browser closed|browser has disconnected/i.test(msg)) return new RpaError('BROWSER_ERROR', 'browser or page was closed: ' + msg.split('\n')[0]);
+  if (/has been closed|Target closed|Browser closed|browser has disconnected/i.test(msg)) return new RecipeError('BROWSER_ERROR', 'browser or page was closed: ' + msg.split('\n')[0]);
   if (/intercepts pointer events|not visible|not stable|not enabled|element is outside of the viewport|detached from the DOM/i.test(msg))
-    return new RpaError('ELEMENT_NOT_ACTIONABLE', msg.split('\n').slice(0, 6).join(' | '));
-  if (e?.name === 'TimeoutError' || /Timeout \d+ms exceeded/.test(msg)) return new RpaError('ACTION_TIMEOUT', msg.split('\n')[0]);
-  if (/net::ERR_/.test(msg)) return new RpaError('NAVIGATION_FAILED', msg.split('\n')[0]);
-  return new RpaError('STEP_ERROR', msg.split('\n').slice(0, 4).join(' | '));
+    return new RecipeError('ELEMENT_NOT_ACTIONABLE', msg.split('\n').slice(0, 6).join(' | '));
+  if (e?.name === 'TimeoutError' || /Timeout \d+ms exceeded/.test(msg)) return new RecipeError('ACTION_TIMEOUT', msg.split('\n')[0]);
+  if (/net::ERR_/.test(msg)) return new RecipeError('NAVIGATION_FAILED', msg.split('\n')[0]);
+  return new RecipeError('STEP_ERROR', msg.split('\n').slice(0, 4).join(' | '));
 }
 
 export class Runner {
@@ -135,6 +148,8 @@ export class Runner {
   timeout: number;
   screenshots: 'failure' | 'every' | 'none';
   handoffMode: 'auto' | 'never';
+  dialogs: DialogPolicy;
+  private dialogListener?: (d: any) => void;
   onAsk: 'pause' | 'default' | 'fail';
   site: string[];
   /** the recipe whose steps are running now: the top template, or a fragment called by a `recipe` step */
@@ -151,6 +166,7 @@ export class Runner {
     this.screenshots = opts.screenshots ?? d.screenshots ?? 'failure';
     this.handoffMode = opts.headless ? 'never' : opts.handoff ?? 'auto';
     this.onAsk = opts.onAsk ?? (opts.connected ? 'fail' : 'pause');
+    this.dialogs = dialogPolicy(d.dialogs, opts.dialogs);
     this.site = this.tpl.site || [];
     this.cur = { tpl: this.tpl, path: opts.loaded.path };
     this.scope = { inputs: {}, vars: {}, account: opts.account || {} };
@@ -226,18 +242,18 @@ export class Runner {
   checkSite(url = this.page.url()) {
     if (!/^https?:/.test(url)) return;
     const host = new URL(url).hostname;
-    if (!this.site.some((d) => hostMatches(host, d))) throw new RpaError('NAVIGATION_BLOCKED', `page is on "${host}", outside site [${this.site.join(', ')}]`);
+    if (!this.site.some((d) => hostMatches(host, d))) throw new RecipeError('NAVIGATION_BLOCKED', `page is on "${host}", outside site [${this.site.join(', ')}]`);
   }
 
-  async detectEnv(err: RpaError): Promise<RpaError | null> {
+  async detectEnv(err: RecipeError): Promise<RecipeError | null> {
     if (ENV_ERROR_CODES.has(err.code) || err.code === 'HANDOFF_REQUIRED') return err;
     try {
       const ch = await this.evalIso<string | null>(inpageCall('detectChallenge'));
-      if (ch) return new RpaError('CHALLENGE_DETECTED', `captcha / risk-control page detected (${ch})`);
+      if (ch) return new RecipeError('CHALLENGE_DETECTED', `captcha / risk-control page detected (${ch})`);
       const url = this.page.url();
       if (/\/(login|signin|sign-in|sign_in)\b|\/flow\/login|passport\./i.test(url)) {
         const lc = this.cur.tpl.account?.loginCheck;
-        if (!lc || !(await this.cond(lc, this.scope)).pass) return new RpaError('LOGIN_REQUIRED', `redirected to a login page: ${url}`);
+        if (!lc || !(await this.cond(lc, this.scope)).pass) return new RecipeError('LOGIN_REQUIRED', `redirected to a login page: ${url}`);
       }
     } catch {}
     return null;
@@ -245,7 +261,7 @@ export class Runner {
 
   // ---------- human handoff ----------
   async handoff(reason: string, until: any | null, code: string): Promise<number> {
-    if (this.handoffMode === 'never') throw new RpaError(code, `${reason} (human needed, but this run is non-interactive)`);
+    if (this.handoffMode === 'never') throw new RecipeError(code, `${reason} (human needed, but this run is non-interactive)`);
     const started = Date.now();
     const timeoutMs = this.opts.handoffTimeoutMs ?? 15 * 60 * 1000;
     const flag = path.join(this.rec.dir, 'CONTINUE');
@@ -270,7 +286,7 @@ export class Runner {
         if (until && (await this.cond(until, this.scope).catch(() => ({ pass: false }))).pass) break;
         await sleep(1000);
       }
-      if (Date.now() - started >= timeoutMs) throw new RpaError(code, `${reason} (no human action within ${Math.round(timeoutMs / 60000)} min)`);
+      if (Date.now() - started >= timeoutMs) throw new RecipeError(code, `${reason} (no human action within ${Math.round(timeoutMs / 60000)} min)`);
       resolved = true;
     } finally {
       this.rec.events.emit('handoff.end', { code, waitedMs: Date.now() - started, resolved });
@@ -285,18 +301,18 @@ export class Runner {
   // ---------- main ----------
   async run(): Promise<RunResult> {
     const v = validateTemplate(this.tpl);
-    if (!v.ok) throw new RpaError('TEMPLATE_INVALID', `template is invalid:\n` + v.errors.map((e) => `  [${e.stepId ?? '-'}] ${e.path}: ${e.message}`).join('\n'));
+    if (!v.ok) throw new RecipeError('TEMPLATE_INVALID', `template is invalid:\n` + v.errors.map((e) => `  [${e.stepId ?? '-'}] ${e.path}: ${e.message}`).join('\n'));
     const calls = checkRecipeCalls(this.tpl, this.opts.loaded.path).filter((e) => e.level === 'error');
-    if (calls.length) throw new RpaError('TEMPLATE_INVALID', `recipe calls are invalid:\n` + calls.map((e) => `  [${e.stepId ?? '-'}] ${e.path}: ${e.message}`).join('\n'));
+    if (calls.length) throw new RecipeError('TEMPLATE_INVALID', `recipe calls are invalid:\n` + calls.map((e) => `  [${e.stepId ?? '-'}] ${e.path}: ${e.message}`).join('\n'));
     let resumeState: any = null;
     let inputs = this.opts.inputs || {};
     let cont: { prev: any; ask: PendingAsk | null } | null = null;
     if (this.opts.continueRun) {
       const dir = this.opts.continueRun;
       const runFile = path.join(dir, 'run.json');
-      if (!fs.existsSync(runFile)) throw new RpaError('INPUT_INVALID', `${dir} is not a run directory (no run.json)`);
+      if (!fs.existsSync(runFile)) throw new RecipeError('INPUT_INVALID', `${dir} is not a run directory (no run.json)`);
       const prev = readJson(runFile);
-      if (prev.status !== 'paused') throw new RpaError('INPUT_INVALID', `run ${dir} is "${prev.status}", not paused at a question; only a paused run can continue`);
+      if (prev.status !== 'paused') throw new RecipeError('INPUT_INVALID', `run ${dir} is "${prev.status}", not paused at a question; only a paused run can continue`);
       resumeState = readJson(path.join(dir, 'state.json'));
       inputs = { ...(resumeState.inputs || {}), ...inputs };
       this.opts.profile ??= prev.profile;
@@ -304,7 +320,7 @@ export class Runner {
       if (prev.templateVersion !== this.tpl.version) log.info(`⚠️ the recipe changed since this run paused (${prev.templateVersion} → ${this.tpl.version}); continuing with the new version`);
     } else if (this.opts.resumeFrom) {
       const runFile = path.join(this.opts.resumeFrom, 'run.json');
-      if (!fs.existsSync(runFile)) throw new RpaError('INPUT_INVALID', `--resume: ${this.opts.resumeFrom} is not a run directory (no run.json). List runs with: browser-recipewright runs`);
+      if (!fs.existsSync(runFile)) throw new RecipeError('INPUT_INVALID', `--resume: ${this.opts.resumeFrom} is not a run directory (no run.json). List runs with: browser-recipewright runs`);
       const prev = readJson(runFile);
       const stateFile = path.join(this.opts.resumeFrom, 'state.json');
       if (fs.existsSync(stateFile)) {
@@ -363,7 +379,8 @@ export class Runner {
       this.conn = this.opts.connected ?? (await connect(profile, { headless: this.opts.headless }));
       if (!cont && !this.opts.connected) this.ownsBrowser = this.conn.launchedHere && !this.opts.keepOpen;
       this.page = this.conn.page;
-      this.page.on('dialog', (d) => d.dismiss().catch(() => {}));
+      this.dialogListener = (d: any) => this.onDialog(d);
+      this.page.on('dialog', this.dialogListener);
       this.watchPage(this.page);
       if (cont) {
         startIdx = this.nextTop;
@@ -401,7 +418,7 @@ export class Runner {
       output = this.tpl.outputs ? render(this.tpl.outputs.from, this.scope) : this.scope.vars;
       if (this.tpl.outputs?.schema) {
         const errs = checkSchema(output, this.tpl.outputs.schema);
-        if (errs.length) throw Object.assign(new RpaError('OUTPUT_INVALID', errs.join('; ')), { stepId: null });
+        if (errs.length) throw Object.assign(new RecipeError('OUTPUT_INVALID', errs.join('; ')), { stepId: null });
       }
     } catch (e: any) {
       if (e instanceof AskPause) {
@@ -414,6 +431,7 @@ export class Runner {
       if (!this.dossierWritten) await this.writeDossier(null, err, error.path ?? '-', null).catch(() => {});
     } finally {
       if (this.page) this.unwatchPage(this.page);
+      if (this.page && this.dialogListener) this.page.off('dialog', this.dialogListener);
       if (!paused) this.rec.writeOutput(output);
       if (this.conn && !this.opts.connected) {
         // a paused run always leaves the browser open on the page, so the agent's answer continues right there
@@ -422,6 +440,11 @@ export class Runner {
       }
     }
     const status = error ? 'failed' : 'success';
+    // usage per site+account (for the batch reminder and `accounts`): every real run that ended counts; act (connected) and runs that never got
+    // past the login check do not
+    if (!this.opts.connected && error?.code !== 'LOGIN_REQUIRED') {
+      try { recordUsage(this.opts.profile || defaultProfile(this.tpl), itemsOf(status, output)); } catch {}
+    }
     this.rec.finish({ status, error: error ?? null, outputCount: Array.isArray(output) ? output.length : undefined });
     const res: RunResult = { status, runDir: this.rec.dir, output, outputPath: path.join(this.rec.dir, 'output.json'), error };
     if (error) res.dossier = path.join(this.rec.dir, 'failure', 'dossier.json');
@@ -497,12 +520,12 @@ export class Runner {
       return;
     }
     try {
-      if (!so.goto) throw new RpaError('START_PAGE_MISMATCH', `recipe "${tpl.id}" must start on a page where ${r.why}, but the browser is on ${urlBefore}. Run the fragment that leads there first (or give the recipe startOn.goto).`);
+      if (!so.goto) throw new RecipeError('START_PAGE_MISMATCH', `recipe "${tpl.id}" must start on a page where ${r.why}, but the browser is on ${urlBefore}. Run the fragment that leads there first (or give the recipe startOn.goto).`);
       const url = String(render(so.goto, scope));
       this.checkSite(url);
       await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: Math.max(this.timeout, 30000) });
       r = await this.waitCond(so.when, scope, this.timeout);
-      if (!r.pass) throw new RpaError('START_PAGE_MISMATCH', `opened ${url} for recipe "${tpl.id}", but its start condition is not met: ${r.why}`);
+      if (!r.pass) throw new RecipeError('START_PAGE_MISMATCH', `opened ${url} for recipe "${tpl.id}", but its start condition is not met: ${r.why}`);
     } catch (e: any) {
       const err = normalizeError(e);
       record('failed', { result: 'fail', why: r.why }, { error: { code: err.code, message: err.message, category: errorCategory(err.code) } });
@@ -516,9 +539,9 @@ export class Runner {
   async runFragment(step: any, stepPath: string, scope: Scope, rec: StepRecord): Promise<any> {
     const sub = resolveRecipe(String(render(step.recipe, scope)), this.cur.path);
     const tpl = sub.template;
-    if (this.depth + 1 >= MAX_RECIPE_DEPTH) throw new RpaError('TEMPLATE_INVALID', `recipe calls are nested more than ${MAX_RECIPE_DEPTH} deep`);
+    if (this.depth + 1 >= MAX_RECIPE_DEPTH) throw new RecipeError('TEMPLATE_INVALID', `recipe calls are nested more than ${MAX_RECIPE_DEPTH} deep`);
     const v = validateTemplate(tpl);
-    if (!v.ok) throw new RpaError('TEMPLATE_INVALID', `called recipe "${tpl.id}" is invalid: ` + v.errors.map((e) => `[${e.stepId ?? '-'}] ${e.message}`).join('; '));
+    if (!v.ok) throw new RecipeError('TEMPLATE_INVALID', `called recipe "${tpl.id}" is invalid: ` + v.errors.map((e) => `[${e.stepId ?? '-'}] ${e.message}`).join('; '));
     const saved = this.resumeFrames[stepPath];
     delete this.resumeFrames[stepPath];
     const child: Scope = {
@@ -543,7 +566,7 @@ export class Runner {
       const out = tpl.outputs ? render(tpl.outputs.from, child) : child.vars;
       if (tpl.outputs?.schema) {
         const errs = checkSchema(out, tpl.outputs.schema);
-        if (errs.length) throw new RpaError('OUTPUT_INVALID', `recipe "${tpl.id}": ${errs.join('; ')}`);
+        if (errs.length) throw new RecipeError('OUTPUT_INVALID', `recipe "${tpl.id}": ${errs.join('; ')}`);
       }
       delete this.frames[stepPath];
       return out;
@@ -565,7 +588,7 @@ export class Runner {
     }
   }
 
-  async writeDossier(step: any | null, err: RpaError, stepPath: string, rec: StepRecord | null) {
+  async writeDossier(step: any | null, err: RecipeError, stepPath: string, rec: StepRecord | null) {
     this.dossierWritten = true;
     const fdir = this.rec.failureDir();
     let snap: any = null;
@@ -642,6 +665,16 @@ export class Runner {
     ev.emit('page.navigated', { url: page.url() });
     measure();
   }
+  /** Answer a JS dialog by the policy (an unanswered dialog would freeze the page) and record it. */
+  onDialog(d: any) {
+    const { action, promptText } = this.dialogs;
+    const type = d.type();
+    const message = String(d.message() || '').slice(0, 500);
+    const p = action === 'accept' ? d.accept(type === 'prompt' ? promptText ?? d.defaultValue() : undefined) : d.dismiss();
+    p.catch(() => {});
+    log.info(`  💬 ${type} dialog "${message.slice(0, 80)}" → ${action}`);
+    this.rec?.events.emit('dialog', { dialogType: type, message, action, ...(action === 'accept' && type === 'prompt' ? { promptText: promptText ?? d.defaultValue() } : {}) });
+  }
   unwatchPage(page: Page) {
     human.observeInput(page, null);
     if (this.navListener) page.off('framenavigated', this.navListener);
@@ -709,7 +742,7 @@ export class Runner {
     const retries = step.retries ?? this.cur.tpl.defaults?.retries ?? 0;
     const timeout = step.timeoutMs ?? this.timeout;
     let value: any;
-    let lastErr: RpaError | null = null;
+    let lastErr: RecipeError | null = null;
     let handoffUsed = false;
     for (let attempt = 1; attempt <= retries + 1; attempt++) {
       rec.attempts++;
@@ -718,7 +751,7 @@ export class Runner {
         if (step.expect) {
           const r = await this.waitCond(step.expect, scope, timeout);
           rec.expect = { result: r.pass ? 'pass' : 'fail', why: r.why };
-          if (!r.pass) throw new RpaError('EXPECT_FAILED', `expect not met: ${r.why}`);
+          if (!r.pass) throw new RecipeError('EXPECT_FAILED', `expect not met: ${r.why}`);
         }
         this.checkSite();
         lastErr = null;
@@ -841,7 +874,7 @@ export class Runner {
       }
       case 'forEach': {
         const list = typeof step.in === 'string' ? render(step.in, scope) : step.in;
-        if (!Array.isArray(list)) throw new RpaError('STEP_ERROR', `forEach "in" is not an array (got ${typeof list})`);
+        if (!Array.isArray(list)) throw new RecipeError('STEP_ERROR', `forEach "in" is not an array (got ${typeof list})`);
         const max = Number(render(step.max, scope)) || list.length;
         const innerSaves = collectSaves(step.do);
         let results: any[] = [];
@@ -892,7 +925,7 @@ export class Runner {
    */
   async execAsk(step: any, stepPath: string, scope: Scope, rec: StepRecord, finish: () => void): Promise<any> {
     rec.attempts = 1;
-    const fail = (err: RpaError) => {
+    const fail = (err: RecipeError) => {
       rec.status = 'failed';
       rec.error = { code: err.code, message: err.message, category: errorCategory(err.code) };
       finish();
@@ -914,7 +947,7 @@ export class Runner {
     }
     if (source === null) {
       if (this.onAsk !== 'pause') {
-        throw fail(new RpaError('ASK_UNANSWERED', `step asks the agent "${question}", but this run cannot stop for an answer (on-ask: ${this.onAsk})${step.default === undefined ? ' and the step has no default' : ''}`));
+        throw fail(new RecipeError('ASK_UNANSWERED', `step asks the agent "${question}", but this run cannot stop for an answer (on-ask: ${this.onAsk})${step.default === undefined ? ' and the step has no default' : ''}`));
       }
       const ask: PendingAsk = {
         runDir: this.rec.dir, templateId: this.tpl.id, templatePath: this.opts.loaded.path, stepId: step.id, path: stepPath,
@@ -981,7 +1014,7 @@ export class Runner {
         // then give the load state a bounded chance; the step's `expect` decides whether we landed right.
         const before = page.url();
         const res = await page.goBack({ waitUntil: 'commit', timeout: Math.max(timeout, 30000) });
-        if (!res && page.url() === before) throw new RpaError('NAVIGATION_FAILED', 'there is no previous page to go back to');
+        if (!res && page.url() === before) throw new RecipeError('NAVIGATION_FAILED', 'there is no previous page to go back to');
         // res is null for a cache restore: that page is already loaded, so only wait after a real network load
         if (res) await page.waitForLoadState('domcontentloaded', { timeout: Math.min(timeout, 5000) }).catch(() => {});
         return null;
@@ -1049,20 +1082,24 @@ export class Runner {
         if (s.target) {
           if (s.state === 'hidden' || s.state === 'detached') {
             const r = await this.waitCond({ notExists: render(step.target, scope) }, scope, timeout);
-            if (!r.pass) throw new RpaError('ACTION_TIMEOUT', `element still present after ${timeout}ms`);
-          } else await resolve(s.target);
+            if (!r.pass) throw new RecipeError('ACTION_TIMEOUT', `element still present after ${timeout}ms`);
+          } else {
+            // presence only: one or many matches both count as "there"
+            const info = await waitPresent(page, render(step.target, scope), timeout);
+            rec.locator = { tried: info.tried, hit: info.hit };
+          }
         }
         if (s.url) {
           const r = await this.waitCond({ urlContains: s.url }, scope, timeout);
-          if (!r.pass) throw new RpaError('ACTION_TIMEOUT', r.why);
+          if (!r.pass) throw new RecipeError('ACTION_TIMEOUT', r.why);
         }
         if (s.text) {
           const r = await this.waitCond({ exists: [{ text: s.text }] }, scope, timeout);
-          if (!r.pass) throw new RpaError('ACTION_TIMEOUT', `text "${s.text}" not visible after ${timeout}ms`);
+          if (!r.pass) throw new RecipeError('ACTION_TIMEOUT', `text "${s.text}" not visible after ${timeout}ms`);
         }
         if (step.until) {
           const r = await this.waitCond(step.until, scope, timeout);
-          if (!r.pass) throw new RpaError('ACTION_TIMEOUT', r.why);
+          if (!r.pass) throw new RecipeError('ACTION_TIMEOUT', r.why);
         }
         return null;
       }
@@ -1100,7 +1137,7 @@ export class Runner {
         const fields = step.fields ? render(step.fields, scope) : { value: { text: s.attr ? undefined : true, attr: s.attr, pattern: s.pattern, as: s.as } };
         const raw = await (loc as any).evaluate(inpageElementFn('extractFrom'), fields, undefined, true);
         const { values, missing } = postFields(raw, fields);
-        if (missing.length) throw new RpaError('LOCATOR_NOT_FOUND', `field(s) not found inside the element: ${missing.join(', ')}`, { locator: rec.locator });
+        if (missing.length) throw new RecipeError('LOCATOR_NOT_FOUND', `field(s) not found inside the element: ${missing.join(', ')}`, { locator: rec.locator });
         return step.fields ? values : values.value;
       }
       case 'queryAll': {
@@ -1134,7 +1171,7 @@ export class Runner {
       case 'assert': {
         const r = await this.cond(step.that, scope);
         rec.expect = { result: r.pass ? 'pass' : 'fail', why: r.why };
-        if (!r.pass) throw new RpaError(s.code || 'ASSERT_FAILED', s.message || `assert failed: ${r.why}`);
+        if (!r.pass) throw new RecipeError(s.code || 'ASSERT_FAILED', s.message || `assert failed: ${r.why}`);
         return true;
       }
       case 'handoff': {
@@ -1143,7 +1180,7 @@ export class Runner {
         return null;
       }
     }
-    throw new RpaError('TEMPLATE_INVALID', `unknown action ${s.action}`);
+    throw new RecipeError('TEMPLATE_INVALID', `unknown action ${s.action}`);
   }
 
   async waitItems(target: any[], fields: any, max: number, timeout: number) {
@@ -1167,7 +1204,7 @@ export class Runner {
     let stop = 'maxScrolls';
     let hit: number | null = null;
     const first = await this.waitItems(item, fields, 0, timeout);
-    if (first.total === 0) throw new RpaError('LOCATOR_NOT_FOUND', `collect: no item matched after ${timeout}ms`, { locator: { tried: item.map((_: any, i: number) => ({ candidate: i, matches: 0 })), hit: null } });
+    if (first.total === 0) throw new RecipeError('LOCATOR_NOT_FOUND', `collect: no item matched after ${timeout}ms`, { locator: { tried: item.map((_: any, i: number) => ({ candidate: i, matches: 0 })), hit: null } });
     let res = first;
     for (;;) {
       if (hit === null && res.candidate >= 0) hit = res.candidate;

@@ -7,7 +7,8 @@
     { "id": "work", "profile": "demo/work", "inputs": { "keyword": "workflow" } }
   ],
   "spacingMs": [3000, 6000],
-  "dailyCapPerAccount": 3,
+  "remindAfter": 3,
+  "parallel": 1,
   "onLoginRequired": "skip",
   "onChallenge": "stop"
 }
