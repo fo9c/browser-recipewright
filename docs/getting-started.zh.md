@@ -83,6 +83,15 @@ browser-recipewright login <你的配方id>            # 或者：login 网站�
 
 在弹出的窗口里正常登录，成功后程序会自动检测到并关闭窗口。同一网站多个账号用 `-p 网站/账号名` 区分，例如 `-p example.com/work`。
 
+可选：如果你平时用的 Chrome 里已经登录了这个网站，也可以把它的登录状态（cookie）一次性复制过来，省去手动登录：
+
+```bash
+browser-recipewright import-login example.com                  # 从你 Chrome 的默认用户复制到 example.com/default
+browser-recipewright import-login example.com --from "工作"     # 指定 Chrome 里的用户（import-login --list 查看）
+```
+
+只读取、不改动你的 Chrome；只复制这个网站的 cookie。Mac 可能弹出钥匙串授权，点"允许"。如果失败（Chrome 正开着锁住了文件、Windows 新版 Chrome 的加密不允许搬走等），会提示原因，这时用上面的 `login` 手动登录即可。之后的运行照常用隔离的 profile。
+
 运行时窗口会显示出来，你可以看着它操作（请不要同时在这个窗口里点来点去）。过程中如果出现验证码，终端会提示你手动处理，处理完自动继续。
 
 ## 6. 让 Claude Code 来用

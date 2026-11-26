@@ -18,6 +18,7 @@ src/cli.ts                       commands; JSON on stdout, progress on stderr, e
         │     ├── records.ts     runs/<id>/ run.json, steps.jsonl, state.json, output.json, failure/dossier.json
         │     └── events.ts      runs/<id>/events.jsonl: the run data format viewer plugins read (docs/run-data-format.md)
         ├── browser.ts           find system Chrome, spawn with clean flags + own user-data-dir, connectOverCDP, sessions
+        ├── import-login.ts      optional: copy one site's cookies from the user's own Chrome into an isolated profile
         ├── heal.ts              step-scoped patches, diff, version bump, .history
         ├── batch.ts             accounts × jobs, spacing, parallel browsers, usage reminder, login skip, merged table, resume
         └── usage.ts             runs / items per site+account per day (for reminders, never blocks)
