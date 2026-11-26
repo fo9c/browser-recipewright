@@ -448,3 +448,20 @@ test('dialogs: dismissed by default, accepted with --dialogs accept (prompt gets
   assert.equal(JSON.parse(fs.readFileSync(r.json.output, 'utf8')), 'Ada');
   assert.equal((await cli('act', 'click', '--target', confirmBtn, '--dialogs', 'maybe', '-p', 'fix/e2e')).json.error.code, 'INPUT_INVALID');
 });
+
+test('profiles: without -p, live commands use the only running browser; two running → PROFILE_AMBIGUOUS', { skip }, async () => {
+  await cli('close', '--all');
+  const l = await cli('launch', '--headless', '--url', `${srv.url}/selfcheck.html`);
+  assert.equal(l.json.session.profile, '127.0.0.1/default', l.stdout);
+  const snap = await cli('snapshot');
+  assert.match(snap.stdout, /自检页/);
+  assert.match(snap.stderr, /profile: 127\.0\.0\.1\/default \(the only running browser\)/);
+  assert.equal((await cli('act', 'waitFor', '--target', '[{"css":"section"}]')).json.status, 'success');
+  assert.equal((await cli('launch', '--headless', '-p', 'other.test/a')).json.status, 'ok');
+  const amb = await cli('snapshot');
+  assert.equal(amb.code, 2);
+  assert.equal(amb.json.error.code, 'PROFILE_AMBIGUOUS');
+  assert.match(amb.json.error.message, /other\.test\/a/);
+  assert.match((await cli('snapshot', '-p', 'other.test/a')).stdout, /about:blank/);
+  await cli('close', '--all');
+});

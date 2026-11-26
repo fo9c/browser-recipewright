@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import readline from 'node:readline';
 import type { Page } from 'patchright';
-import { connect, closeSession, disconnect, type Connected } from './browser.js';
+import { connect, closeSession, disconnect, siteKey, type Connected } from './browser.js';
 import { render, Scope, FILTERS, parseCount } from './render.js';
 import { evalCond, type PageProbe, type CondResult } from './conditions.js';
 import { resolveTarget, countTarget, textOfTarget, waitPresent } from './locator.js';
@@ -90,8 +90,9 @@ class StepFailure extends RecipeError {
 const CONTROL = new Set(['if', 'forEach', 'while', 'group', 'recipe']);
 const RAW_KEYS = new Set(['expect', 'filter', 'until', 'that', 'when', 'do', 'then', 'else', 'steps', 'collectFrom', 'fields', 'item', 'in']);
 
+/** Same rule as resolveProfile step 2: <recipe site>/default ("*" → default/default). */
 export function defaultProfile(tpl: any): string {
-  return `${(tpl.site?.[0] || 'default').replace(/^\*\./, '')}/default`;
+  return `${siteKey(tpl.site?.[0]) || 'default'}/default`;
 }
 
 export function coerceInputs(tpl: any, raw: Record<string, any> = {}): Record<string, any> {

@@ -46,6 +46,7 @@ browser-recipewright act collect --step '{"item":[{"testid":"post"}],"fields":{.
 #   fieldsEmpty tells you which field locator is wrong before you put the step in a template
 ```
 - Profiles are `<site>/<account>`; each is a separate Chrome user-data-dir with its own login.
+- Without `-p` every command picks the profile the same way: a recipe → `<recipe site>/default`; `launch --url` → `<host>/default`; otherwise the only running browser; several running → `PROFILE_AMBIGUOUS` (pass `-p`); nothing running → `<url host>/default` or `default/default`. The picked profile is printed on stderr.
 - `snapshot --json` gives, for each ref, candidates already checked to match exactly one element. Copy them into `target`.
 - Prefer navigating by URL (`goto` with `{{inputs.x | urlencode}}`) over typing into search boxes: fewer steps, more stable.
 - If you see a login wall or captcha: stop and ask the human (`browser-recipewright login <template> -p <profile>`; if the template's URL uses inputs, pass them: `-i base=...`). Never try to bypass a captcha.

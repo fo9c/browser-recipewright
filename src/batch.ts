@@ -24,6 +24,7 @@ import path from 'node:path';
 import { dirs, ensureDir, readJson, writeJson, safeName, timestampId, todayKey, pickMs, sleep, log, RecipeError } from './util.js';
 import { loadTemplate } from './library.js';
 import { Runner } from './engine.js';
+import { siteKey } from './browser.js';
 
 export interface Job {
   key: string;
@@ -126,7 +127,7 @@ export async function runBatch(opts: { file?: string; resumeDir?: string; retryF
     dir = ensureDir(path.join(dirs.batches(), `${timestampId()}_${safeName(spec.name || path.basename(file, '.json'))}`));
   }
   const loaded = loadTemplate(spec.template.startsWith('.') ? path.resolve(spec._baseDir, spec.template) : spec.template);
-  spec._site = (loaded.template.site?.[0] || 'default').replace(/^\*\./, '');
+  spec._site = siteKey(loaded.template.site?.[0]) || 'default';
   const jobs: Job[] = spec._jobs || planJobs(spec, spec._baseDir);
   spec._jobs = jobs;
   writeJson(path.join(dir, 'batch.json'), spec);

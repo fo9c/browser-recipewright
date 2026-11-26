@@ -1,6 +1,8 @@
 // Unit tests (no browser): node --test tests/unit.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import fs from 'node:fs';
 import { validateTemplate } from '../dist/validate.js';
 import { render, parseCount } from '../dist/render.js';
@@ -272,4 +274,27 @@ test('flows: recipe calls are checked (exists, inputs, circles) and startOn is v
   assert.equal(so({ when: { urlContains: '/search' }, goto: 'https://example.com/search' }).ok, true);
   assert.match(JSON.stringify(so({ when: { urlContains: '/s' }, goto: 'https://evil.com/' }).errors), /not in site/);
   assert.match(JSON.stringify(so({ when: { bogus: 1 } }).errors), /unknown condition/);
+});
+
+test('profiles: one rule picks the profile when -p is not given', async () => {
+  const { siteKey, resolveProfile } = await import('../dist/browser.js');
+  const { defaultProfile } = await import('../dist/engine.js');
+  assert.equal(siteKey('https://www.Example.com:8080/a'), 'example.com');
+  assert.equal(siteKey('*.example.com'), 'example.com');
+  assert.equal(siteKey('*'), null);
+  assert.equal(siteKey('data:text/html,x'), null);
+  assert.equal(defaultProfile({ site: ['*.example.com'] }), 'example.com/default');
+  assert.equal(defaultProfile({ site: ['*'] }), 'default/default');
+  const prev = process.env.BROWSER_RECIPEWRIGHT_HOME;
+  process.env.BROWSER_RECIPEWRIGHT_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brw-prof-'));
+  try {
+    assert.deepEqual(await resolveProfile({ explicit: 'a.com/x' }), { profile: 'a.com/x', why: '-p' });
+    assert.equal((await resolveProfile({ site: 'www.a.com' })).profile, 'a.com/default');
+    assert.equal((await resolveProfile({ url: 'https://b.com/p', urlFirst: true })).profile, 'b.com/default');
+    // nothing running
+    assert.equal((await resolveProfile({})).profile, 'default/default');
+    assert.equal((await resolveProfile({ url: 'https://c.com' })).profile, 'c.com/default');
+  } finally {
+    if (prev === undefined) delete process.env.BROWSER_RECIPEWRIGHT_HOME; else process.env.BROWSER_RECIPEWRIGHT_HOME = prev;
+  }
 });

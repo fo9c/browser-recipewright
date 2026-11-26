@@ -8,7 +8,7 @@ import { validateTemplate } from './validate.js';
 import { loadTemplate, listTemplates, saveTemplate } from './library.js';
 import { Runner, defaultProfile, coerceInputs } from './engine.js';
 import { render } from './render.js';
-import { connect, launchChrome, getSession, closeSession, disconnect, listSessions, findChrome, refsFile, profilesList, profileDir } from './browser.js';
+import { connect, launchChrome, getSession, closeSession, disconnect, listSessions, findChrome, refsFile, profilesList, profileDir, resolveProfile } from './browser.js';
 import { inpageCall } from './inpage.js';
 import { evalCond } from './conditions.js';
 import { countTarget, textOfTarget } from './locator.js';
@@ -64,8 +64,18 @@ function exitCodeFor(code?: string) {
   if (!code) return 0;
   if (code === 'ASK_PENDING') return 4;
   if (['LOGIN_REQUIRED', 'CHALLENGE_DETECTED', 'HANDOFF_REQUIRED', 'BROWSER_ERROR'].includes(code)) return 3;
-  if (['INPUT_INVALID', 'TEMPLATE_INVALID', 'TEMPLATE_NOT_FOUND', 'PATCH_INVALID', 'BATCH_INVALID', 'ANSWER_INVALID'].includes(code)) return 2;
+  if (['INPUT_INVALID', 'TEMPLATE_INVALID', 'TEMPLATE_NOT_FOUND', 'PATCH_INVALID', 'BATCH_INVALID', 'ANSWER_INVALID', 'PROFILE_AMBIGUOUS'].includes(code)) return 2;
   return 1;
+}
+
+const PROFILE_HELP = 'profile <site>/<account> (default: the running browser if only one is running)';
+
+/** Fill o.profile by the shared rule (see resolveProfile) and say which one was picked when it was not given. */
+async function pickProfile(o: any, extra: { url?: string; urlFirst?: boolean } = {}) {
+  const r = await resolveProfile({ explicit: o.profile, ...extra });
+  if (r.why !== '-p') log.info(`profile: ${r.profile} (${r.why})`);
+  o.profile = r.profile;
+  return r.profile;
 }
 
 function dialogsOpt(v?: string): 'dismiss' | 'accept' | undefined {
@@ -125,10 +135,11 @@ program
 program
   .command('launch')
   .description('start (or reuse) a Chrome window for a profile and keep it running for snapshot/act')
-  .option('-p, --profile <site/account>', 'profile, e.g. example.com/main', 'default/default')
+  .option('-p, --profile <site/account>', 'profile, e.g. example.com/main (default: <url host>/default, else the running browser, else default/default)')
   .option('-u, --url <url>', 'open this URL')
   .option('--headless', 'no window')
   .action(wrap(async (o) => {
+    await pickProfile(o, { url: o.url, urlFirst: true });
     const existing = await getSession(o.profile);
     const s = existing ?? (await launchChrome(o.profile, { headless: o.headless }));
     let warning: string | null = null;
@@ -148,10 +159,10 @@ program
 program
   .command('close')
   .description('close the Chrome window of a profile (or --all)')
-  .option('-p, --profile <site/account>', 'profile', 'default/default')
+  .option('-p, --profile <site/account>', PROFILE_HELP)
   .option('--all', 'close every session')
   .action(wrap(async (o) => {
-    const targets = o.all ? (await listSessions()).map((s) => s.profile) : [o.profile];
+    const targets = o.all ? (await listSessions()).map((s) => s.profile) : [await pickProfile(o)];
     const closed: string[] = [];
     for (const p of targets) if (await closeSession(p)) closed.push(p);
     out({ status: 'ok', closed });
@@ -171,7 +182,7 @@ program
     let tpl: any = null;
     try { tpl = loadTemplate(ref).template; } catch {}
     const site = tpl ? tpl.site[0] : ref.replace(/^https?:\/\//, '').split('/')[0];
-    const profile = o.profile || (tpl ? defaultProfile(tpl) : `${site}/default`);
+    const profile = (await resolveProfile({ explicit: o.profile, site })).profile;
     // templates may build the login URL from inputs ({{inputs.base}}): fill them (defaults + --input) first
     const scope: any = { inputs: {}, vars: {}, account: {} };
     if (tpl) {
@@ -212,11 +223,12 @@ program
 program
   .command('screenshot')
   .description('save a PNG of the current page of a running session')
-  .option('-p, --profile <site/account>', 'profile', 'default/default')
+  .option('-p, --profile <site/account>', PROFILE_HELP)
   .option('-u, --url <url>', 'navigate first')
   .option('-o, --out <file>', 'output file (default: ~/.browser-recipewright/screenshots/<profile>-<time>.png)')
   .option('--full', 'whole page, not just the visible part')
   .action(wrap(async (o) => {
+    await pickProfile(o, { url: o.url });
     const c = await connect(o.profile);
     try {
       const warning = o.url ? await softGoto(c.page, o.url) : null;
@@ -232,12 +244,13 @@ program
 program
   .command('snapshot')
   .description('print an outline of the current page with stable [ref=…] ids (same element → same id across snapshots) and ready-made locator candidates')
-  .option('-p, --profile <site/account>', 'profile', 'default/default')
+  .option('-p, --profile <site/account>', PROFILE_HELP)
   .option('-u, --url <url>', 'navigate first')
   .option('--max <n>', 'max nodes', '300')
   .option('--text', 'also include plain text nodes')
   .option('--json', 'print JSON (includes locator candidates for every ref)')
   .action(wrap(async (o) => {
+    await pickProfile(o, { url: o.url });
     const c = await connect(o.profile);
     try {
       if (o.url) await softGoto(c.page, o.url);
@@ -253,7 +266,7 @@ program
 program
   .command('act <action>')
   .description('run ONE step against the live session, with the same semantics as a template step')
-  .option('-p, --profile <site/account>', 'profile', 'default/default')
+  .option('-p, --profile <site/account>', PROFILE_HELP)
   .option('--ref <ref>', 'use locator candidates of a snapshot ref (e.g. rk3x9a)')
   .option('--target <json>', 'locator candidates as JSON array')
   .option('--step <json>', 'full step JSON (overrides other flags)')
@@ -263,6 +276,7 @@ program
   .option('--dialogs <mode>', 'if the step opens an alert / confirm / prompt: dismiss (default) or accept')
   .action(wrap(async (action, o) => {
     const dialogs = dialogsOpt(o.dialogs);
+    await pickProfile(o, { url: o.url });
     let step: any = o.step ? JSON.parse(o.step) : { action };
     if (o.screenshot) step.screenshot = true;
     step.id ??= 'act';

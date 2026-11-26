@@ -212,6 +212,48 @@ export async function disconnect(c: Connected) {
   await c.browser.close().catch(() => {});
 }
 
+/** "www.example.com" / "https://www.example.com/x" → "example.com"; "*.example.com" → "example.com"; "*" or junk → null. */
+export function siteKey(s?: string | null): string | null {
+  if (!s) return null;
+  let host = s.trim();
+  if (/^[a-z][a-z0-9+.-]*:/i.test(host)) {
+    if (!/^https?:/i.test(host)) return null;
+    try { host = new URL(host).hostname; } catch { return null; }
+  } else host = host.split('/')[0];
+  host = host.toLowerCase().replace(/^\*\./, '').replace(/^www\./, '').replace(/:\d+$/, '');
+  return host && host !== '*' ? host : null;
+}
+
+/**
+ * The one rule every command uses to pick a profile when -p is not given:
+ *   1. -p <site>/<account>                      → exactly that
+ *   2. a recipe is involved (run, login, batch) → <recipe site>/default
+ *   3. launch --url                             → <host of the url>/default
+ *   4. exactly one browser is running           → that one (so snapshot/act/screenshot after a run or launch
+ *                                                  just work, whatever its profile is)
+ *   5. several are running                      → error: say which one with -p
+ *   6. nothing running, a url is known          → <host>/default; otherwise default/default
+ * Profiles live in ~/.browser-rpa/profiles/<site>/<account> (or ~/.browser-recipewright/...), one isolated
+ * Chrome user-data-dir each.
+ */
+export async function resolveProfile(o: { explicit?: string; site?: string | null; url?: string; urlFirst?: boolean } = {}): Promise<{ profile: string; why: string }> {
+  if (o.explicit) return { profile: o.explicit, why: '-p' };
+  const fromSite = siteKey(o.site);
+  if (o.site !== undefined) return { profile: `${fromSite || 'default'}/default`, why: 'recipe site' };
+  const fromUrl = siteKey(o.url);
+  if (o.urlFirst && fromUrl) return { profile: `${fromUrl}/default`, why: 'url' };
+  const running = (await listSessions()).map((s) => s.profile).filter((p) => !p.startsWith('_'));
+  if (running.length === 1) return { profile: running[0], why: 'the only running browser' };
+  if (running.length > 1) {
+    if (fromUrl) {
+      const same = running.filter((p) => p.split('/')[0] === fromUrl);
+      if (same.length === 1) return { profile: same[0], why: 'running browser for this site' };
+    }
+    throw new RecipeError('PROFILE_AMBIGUOUS', `${running.length} browsers are running (${running.join(', ')}); say which one with -p <site>/<account>`, { running });
+  }
+  return { profile: fromUrl ? `${fromUrl}/default` : 'default/default', why: fromUrl ? 'url' : 'default' };
+}
+
 export function profilesList(): string[] {
   const root = dirs.profiles();
   if (!fs.existsSync(root)) return [];
