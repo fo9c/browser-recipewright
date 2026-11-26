@@ -1,5 +1,5 @@
 /**
- * Multi-account batch: accounts × template × per-account params, with spacing, run/item caps per site+account,
+ * Multi-account batch: accounts × template × per-account params, with spacing, a usage reminder per site+account,
  * login-health handling, per-account run records, one merged result table, resume, and optionally several
  * browsers at once (one per profile).
  *
@@ -13,9 +13,7 @@
  *   "jobs": [ { "account": "main", "inputs": { "keyword": "RPA" } } ],  // optional explicit job list (account × params)
  *   "jobsFile": "jobs.csv",                           // optional: columns account,<input>...
  *   "spacingMs": [60000, 180000],                     // random wait between jobs
- *   "dailyCapPerAccount": 5,                          // = caps.runsPerDay
- *   "caps": { "runsPerDay": 5, "runsPerHour": 2, "itemsPerDay": 200, "itemsPerHour": 60 },  // per site+account; accounts[].caps override
- *   "capInput": "count",                              // optional: lower this input so a run never goes past the item caps
+ *   "remindAfter": 5,                                 // optional: warn (never block) when a site+account already ran this many times today
  *   "parallel": 1,                                    // browsers at once (1-8), never two for the same profile
  *   "dialogs": "dismiss" | "accept",
  *   "onLoginRequired": "skip" | "handoff",
@@ -27,7 +25,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { dirs, ensureDir, readJson, writeJson, safeName, timestampId, pickMs, sleep, log, RecipeError } from './util.js';
-import { checkCaps, usageOf, type Caps } from './usage.js';
+import { usageOf } from './usage.js';
 import { loadTemplate } from './library.js';
 import { Runner } from './engine.js';
 import { siteKey } from './browser.js';
@@ -105,13 +103,6 @@ export function usageToday(profile: string): number {
   return usageOf(profile).runsToday;
 }
 
-/** Caps for one account: batch "caps" (dailyCapPerAccount = caps.runsPerDay) overridden by the account's own "caps". */
-export function capsFor(spec: any, account: any): Caps {
-  const c: Caps = { ...(spec.dailyCapPerAccount ? { runsPerDay: spec.dailyCapPerAccount } : {}), ...(spec.caps || {}), ...(account.caps || {}) };
-  for (const [k, v] of Object.entries(c)) if (v !== undefined && (!Number.isInteger(v) || (v as number) < 0)) throw new RecipeError('BATCH_INVALID', `caps.${k} must be a whole number ≥ 0`);
-  return c;
-}
-
 function readResults(dir: string): any[] {
   const f = path.join(dir, 'results.jsonl');
   if (!fs.existsSync(f)) return [];
@@ -136,8 +127,8 @@ export async function runBatch(opts: { file?: string; resumeDir?: string; retryF
   spec._jobs = jobs;
   const parallel = Number(opts.parallel ?? spec.parallel ?? 1);
   if (!Number.isInteger(parallel) || parallel < 1 || parallel > 8) throw new RecipeError('BATCH_INVALID', 'parallel must be a whole number from 1 to 8');
-  for (const j of jobs) capsFor(spec, j.account); // fail early on bad caps
-  if (spec.capInput && !(spec.capInput in (loaded.template.inputs || {}))) throw new RecipeError('BATCH_INVALID', `capInput "${spec.capInput}" is not an input of ${loaded.template.id}`);
+  // a reminder only: the human decides. dailyCapPerAccount is the old name (it used to skip jobs)
+  const remindAfter = spec.remindAfter ?? spec.dailyCapPerAccount;
   writeJson(path.join(dir, 'batch.json'), spec);
   if (opts.dryRun) return { batchDir: dir, jobs, parallel, dryRun: true };
 
@@ -195,20 +186,12 @@ export async function runBatch(opts: { file?: string; resumeDir?: string; retryF
       continue;
     }
     const job = todo.splice(idx, 1)[0];
-    const caps = capsFor(spec, job.account);
-    const capOk = checkCaps(job.account.profile, caps);
-    if (!capOk.ok || capOk.itemsLeft === 0) {
-      append({ key: job.key, account: job.account.id, profile: job.account.profile, status: 'skipped_cap', at: new Date().toISOString(), message: capOk.reason ?? 'item cap reached' });
-      log.info(`  ⏸ ${job.key} skipped: ${capOk.reason ?? 'item cap reached'}`);
-      continue;
-    }
     const inputs = { ...job.inputs };
-    if (spec.capInput && capOk.itemsLeft !== undefined) {
-      const want = Number(inputs[spec.capInput] ?? loaded.template.inputs?.[spec.capInput]?.default ?? Infinity);
-      if (!(want <= capOk.itemsLeft)) {
-        inputs[spec.capInput] = capOk.itemsLeft;
-        log.info(`  ✂ ${job.key}: ${spec.capInput} lowered to ${capOk.itemsLeft} (item cap)`);
-      }
+    let reminder: string | null = null;
+    const used = remindAfter ? usageOf(job.account.profile).runsToday : 0;
+    if (remindAfter && used >= remindAfter) {
+      reminder = `${job.account.profile} already ran ${used} times today (remindAfter ${remindAfter})`;
+      log.warn(`提醒 / reminder: ${reminder}; running anyway, stop the batch if that is too much`);
     }
     if (started > 0) {
       const wait = pickMs(spec.spacingMs, 0);
@@ -220,7 +203,8 @@ export async function runBatch(opts: { file?: string; resumeDir?: string; retryF
     }
     started++;
     busy.add(job.account.profile);
-    const p: Promise<void> = runJob(job, inputs).then((result) => {
+    const p: Promise<void> = runJob(job, inputs).then((result: any) => {
+      if (reminder) result.reminder = reminder;
       append(result);
       if (result.status === 'paused' && !stopped) stopped = `challenge on account ${job.account.id}; batch paused. Fix it in the browser, then: browser-recipewright batch --resume "${dir}"`;
     }).finally(() => {
@@ -267,9 +251,10 @@ export function writeSummary(dir: string, jobs: Job[]) {
   const counts: Record<string, number> = {};
   for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
   const merged = writeMerged(dir, rows);
-  const summary = { total: jobs.length, counts, loginExpired: rows.filter((r) => r.status === 'skipped_login').map((r) => r.account), merged, rows };
+  const reminders = rows.filter((r) => r.reminder).map((r) => r.reminder);
+  const summary = { total: jobs.length, counts, loginExpired: rows.filter((r) => r.status === 'skipped_login').map((r) => r.account), ...(reminders.length ? { reminders } : {}), merged, rows };
   writeJson(path.join(dir, 'summary.json'), summary);
-  const cols = ['key', 'account', 'profile', 'status', 'outputCount', 'runDir', 'error', 'at'];
+  const cols = ['key', 'account', 'profile', 'status', 'outputCount', 'runDir', 'error', 'reminder', 'at'];
   fs.writeFileSync(path.join(dir, 'summary.csv'), [cols.join(','), ...rows.map((r) => cols.map((c) => csvCell(c === 'error' ? r.error?.code : r[c])).join(','))].join('\n') + '\n');
   return summary;
 }

@@ -17,14 +17,14 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 - 运行数据格式 v1 新增（向后兼容）：`recipe.enter` 事件；任务记录 `tasks/<name>/journal.jsonl`。
 - 运行数据格式 v1 新增（向后兼容）：`ask.start`、`ask.answered`、`run.pause`、`run.resume` 事件，步骤状态 `paused`，运行状态 `paused`，以及暂停期间的 `ask.json`。
 - **多浏览器并行批量**：`batch.json` 的 `"parallel": N`（或 `batch --parallel N`，1–8）同时开多个浏览器，每个用自己的隔离 profile；同一个 profile 不会同时跑两个任务；启动之间仍按 `spacingMs` 错开，输入照样拟人。默认仍是 1（逐个跑）。
-- **用量上限按 站点+账号 计**：新增 `caps`：`runsPerDay`、`runsPerHour`、`itemsPerDay`、`itemsPerHour`（每天 / 最近一小时的运行次数和条数），账号可单独覆盖。用量记在 `usage/<站点>__<账号>.json`，`run`、`batch`、`answer` 的每次运行都计入，所以同一天第二个批量也能看到。`capInput`（如 `count`）会自动调低，让一次运行不超过条数上限。`accounts` 命令显示每个 profile 今天和最近一小时的用量。
+- **用量提醒（按 站点+账号）**：`batch.json` 的 `"remindAfter": N`：某个 profile 今天已跑满 N 次时只打印提醒、写进汇总的 `reminders`，照常运行，由人决定要不要停。每次 `run`、`batch`、`answer` 的运行都按 profile 记在 `usage/<站点>__<账号>.json`；`accounts` 命令显示每个 profile 今天的次数和条数。
 - **多账号结果合并表**：批量结束时写 `merged.json` / `merged.csv`，所有账号的结果一张表，每条一行，前面带 `_job`、`_account`、`_profile` 列。
 - **弹窗策略**：配方 `defaults.dialogs` 可设为 `accept`（或 `{ "action": "accept", "promptText": "..." }` 回答 prompt），`run` / `act` 可用 `--dialogs accept|dismiss` 覆盖；默认仍是关闭（dismiss）。每个弹窗都会记录成新的 `dialog` 事件（向后兼容）。
 - `browser-recipewright selfcheck`：在自带的本地测试页上用内置配方 `selfcheck/basic` 跑一遍所有核心浏览器操作（输入、选择、勾选、点击、按键、等待、悬停、滚动提取、跳转、返回），并检查输入是否可信、拟人。每项一行通过 / 失败。
 
 ### Changed
 - **默认 profile 统一一条规则**：没写 `-p` 时，所有命令都一样：有配方 → `<配方站点>/default`；`launch --url` → `<网址域名>/default`；否则用当前唯一在运行的浏览器；同时有多个在运行 → 报 `PROFILE_AMBIGUOUS`（退出码 2）让你用 `-p` 指定；都没有 → `<网址域名>/default` 或 `default/default`。选中的 profile 会打印出来。以前 `run` 用 `<站点>/default` 而 `snapshot`/`act` 用 `default/default`，`run --keep-open` 之后再 `snapshot` 会悄悄开一个空浏览器。
-- 每日上限从按账号 id 计改为按 站点+账号（profile）计；`dailyCapPerAccount` 仍可用（等于 `caps.runsPerDay`）。旧的按 id 计数文件不再读取。
+- `dailyCapPerAccount` 不再跳过任务，改为和 `remindAfter` 一样只提醒；计数从按账号 id 改为按 站点+账号（profile）。旧的按 id 计数文件不再读取。
 - `waitFor` 的目标匹配到多个元素时视为“已出现”，不再报 `LOCATOR_AMBIGUOUS`（等一个列表出现时很常见）。
 - `snapshot` 的 ref id 改为按元素本身（角色、名字、testid 等）生成的短哈希，同一个元素在多次快照之间 id 不变；页面上方新增内容不会让后面的 ref 全部错位。外观相同的元素依次加 `-2`、`-3`。
 - 内部错误类 `RpaError` 改名为 `RecipeError`；Python 包的 `BrowserRpaError` 改名为 `RecipewrightError`（旧名保留为别名）。

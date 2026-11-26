@@ -16,8 +16,7 @@ profile and writes its own run record.
     { "account": "brand-a", "inputs": { "keyword": "latte" } }
   ],
   "spacingMs": [60000, 180000],
-  "caps": { "runsPerDay": 5, "runsPerHour": 2, "itemsPerDay": 200, "itemsPerHour": 60 },
-  "capInput": "count",
+  "remindAfter": 5,
   "parallel": 2,
   "onLoginRequired": "skip",
   "onChallenge": "stop",
@@ -29,8 +28,7 @@ profile and writes its own run record.
 - `jobs` (or `jobsFile`: CSV with `account,<input>...`). Without jobs: one job per account.
 - Inputs merge: batch `inputs` < account `inputs` < job `inputs`.
 - `spacingMs`: random pause between jobs (sequential: after the previous job ends; parallel: after the previous browser started).
-- `caps` (per site+account, i.e. per profile; `accounts[].caps` override): `runsPerDay`, `runsPerHour`, `itemsPerDay`, `itemsPerHour`. "Items" = records a run returned. Usage is stored per profile in `usage/<site>__<account>.json` and counts every run of that profile (`run`, `batch`, `answer`), so a second batch the same day sees what the first one used. Jobs over a cap are `skipped_cap`. `dailyCapPerAccount: N` is short for `caps.runsPerDay: N`. See usage with `browser-recipewright accounts`.
-- `capInput`: name of the recipe input that sets how many items to fetch (e.g. `count`); it is lowered so one run never goes past the item caps.
+- `remindAfter` (optional): when a site+account (profile) already ran this many times today, the batch prints a reminder and lists it under `reminders` in the summary, then runs anyway; you decide whether to stop. Runs are counted per profile across `run`, `batch` and `answer` (`usage/<site>__<account>.json`); see them with `browser-recipewright accounts`. The old `dailyCapPerAccount` now means the same (it no longer skips jobs).
 - `parallel` (1–8, default 1; or `--parallel N`): several browsers at once, each with its own profile. One profile never runs two jobs at the same time; its next job waits. Keep it low: every browser still uses human-like input and spacing.
 - `dialogs`: `dismiss` (default) or `accept` for alert/confirm/prompt in every job.
 - `onLoginRequired`: `skip` (default; job becomes `skipped_login` and is listed in `loginExpired`) or `handoff` (wait for a human).
@@ -53,4 +51,4 @@ with Chinese text intact).
 Log each account in once beforehand: `browser-recipewright login example.com/search-results -p example.com/brand-a`.
 
 Platforms forbid coordinated inauthentic behaviour. Use batches for accounts you legitimately operate
-(e.g. several of your own stores or brands), keep spacing and caps conservative, and prefer read-only tasks.
+(e.g. several of your own stores or brands), keep spacing conservative and the number of runs low, and prefer read-only tasks.

@@ -674,7 +674,7 @@ program
 // ---------------- batch & accounts ----------------
 program
   .command('batch [batchFile]')
-  .description('run a template for many accounts (spacing, run/item caps per site+account, skip expired logins, merged result table, resume; optionally several browsers at once)')
+  .description('run a template for many accounts (spacing, usage reminder per site+account, skip expired logins, merged result table, resume; optionally several browsers at once)')
   .option('--resume <batchDir>', 'resume an interrupted batch (completed jobs are not repeated)')
   .option('--retry-failed', 'with --resume: also rerun failed jobs')
   .option('--dry-run', 'only print the job plan')
@@ -688,11 +688,11 @@ program
 
 program
   .command('accounts')
-  .description('list local browser profiles (accounts), running sessions and usage per site+account (runs / items today and in the last hour)')
+  .description('list local browser profiles (accounts), running sessions and runs / items today per site+account')
   .action(wrap(async () => {
     const sessions = await listSessions();
     const rows = profilesList().filter((p) => !p.startsWith('_')).map((p) => ({ profile: p, running: sessions.some((s) => s.profile === p), usage: usageOf(p) }));
-    for (const r of rows) log.info(`${r.running ? '●' : '○'} ${r.profile}  today: ${r.usage.runsToday} runs, ${r.usage.itemsToday} items · last hour: ${r.usage.runsLastHour} runs, ${r.usage.itemsLastHour} items`);
+    for (const r of rows) log.info(`${r.running ? '●' : '○'} ${r.profile}  today: ${r.usage.runsToday} runs, ${r.usage.itemsToday} items`);
     out({ status: 'ok', home: homeDir(), accounts: rows });
   }));
 

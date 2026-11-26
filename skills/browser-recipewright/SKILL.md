@@ -178,7 +178,7 @@ browser-recipewright task show                                                  
 
 ## 7. Many accounts
 
-Write a `batch.json` (see `references/batch.md`) and run `browser-recipewright batch batch.json`. Each account uses its own profile and gets its own run record; expired logins are skipped and listed; `--resume <batchDir>` never repeats finished jobs. Keep spacing and daily caps conservative and remind the human that platforms forbid coordinated inauthentic activity.
+Write a `batch.json` (see `references/batch.md`) and run `browser-recipewright batch batch.json`. Each account uses its own profile and gets its own run record; expired logins are skipped and listed; `--resume <batchDir>` never repeats finished jobs. Keep spacing conservative (use `remindAfter` for a daily reminder; `parallel` only when needed) and remind the human that platforms forbid coordinated inauthentic activity.
 
 ## Boundaries
 

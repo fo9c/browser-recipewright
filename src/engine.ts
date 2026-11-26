@@ -440,7 +440,7 @@ export class Runner {
       }
     }
     const status = error ? 'failed' : 'success';
-    // usage per site+account (caps): every real run that ended counts; act (connected) and runs that never got
+    // usage per site+account (for the batch reminder and `accounts`): every real run that ended counts; act (connected) and runs that never got
     // past the login check do not
     if (!this.opts.connected && error?.code !== 'LOGIN_REQUIRED') {
       try { recordUsage(this.opts.profile || defaultProfile(this.tpl), itemsOf(status, output)); } catch {}
