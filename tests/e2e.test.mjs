@@ -424,3 +424,27 @@ test('snapshot ref ids are stable: same element keeps its ref when content above
   const gone = await cli('act', 'click', '--ref', 'rzzzzz', '-p', 'fix/e2e');
   assert.match(gone.json.error.message, /run snapshot again/);
 });
+
+test('dialogs: dismissed by default, accepted with --dialogs accept (prompt gets promptText), recorded as events', { skip }, async () => {
+  const html = '<button onclick="document.getElementById(\'o\').textContent=confirm(\'Sure?\')?\'yes\':\'no\'">Confirm</button><button onclick="document.getElementById(\'o\').textContent=prompt(\'Name?\',\'d\')">Prompt</button><p id=o>-</p>';
+  assert.equal((await cli('launch', '--headless', '-p', 'fix/e2e', '--url', 'data:text/html,' + encodeURIComponent(html))).json.status, 'ok');
+  const out = async () => (await cli('act', 'read', '--target', '[{"css":"#o"}]', '-p', 'fix/e2e')).json.output;
+  const confirmBtn = '[{"role":"button","name":"Confirm"}]';
+  assert.equal((await cli('act', 'click', '--target', confirmBtn, '-p', 'fix/e2e')).json.status, 'success');
+  assert.equal(await out(), 'no');
+  const acc = await cli('act', 'click', '--target', confirmBtn, '--dialogs', 'accept', '-p', 'fix/e2e');
+  assert.equal(acc.json.status, 'success', acc.stdout);
+  assert.equal(await out(), 'yes');
+  const ev = fs.readFileSync(path.join(acc.json.runDir, 'events.jsonl'), 'utf8').trim().split('\n').map(JSON.parse).find((e) => e.type === 'dialog');
+  assert.equal(ev.dialogType, 'confirm');
+  assert.equal(ev.message, 'Sure?');
+  assert.equal(ev.action, 'accept');
+  // a template sets the policy once for all its steps; promptText answers prompt()
+  const tpl = path.join(HOME, 'dialogs.json');
+  fs.writeFileSync(tpl, JSON.stringify({ id: 'test/dialogs', version: '1.0.0', title: 'dialogs', site: ['*'], defaults: { dialogs: { action: 'accept', promptText: 'Ada' } },
+    steps: [{ id: 'p', action: 'click', target: [{ role: 'button', name: 'Prompt' }] }, { id: 'r', action: 'read', target: [{ css: '#o' }], saveAs: 'o' }], outputs: { from: '{{vars.o}}' } }));
+  const r = await cli('run', tpl, '-p', 'fix/e2e', '--no-handoff', '--keep-open');
+  assert.equal(r.json.status, 'success', r.stdout + r.stderr);
+  assert.equal(JSON.parse(fs.readFileSync(r.json.output, 'utf8')), 'Ada');
+  assert.equal((await cli('act', 'click', '--target', confirmBtn, '--dialogs', 'maybe', '-p', 'fix/e2e')).json.error.code, 'INPUT_INVALID');
+});

@@ -15,7 +15,7 @@ Machine-readable schema: `schema/template.v0.json` (or `browser-recipewright sch
 | `site` | yes | allowed domains (subdomains included). Leaving them fails with `NAVIGATION_BLOCKED` |
 | `account` | no | `{ checkUrl, loginUrl, loginCheck }`. Before step 1 the runner opens `checkUrl` and evaluates `loginCheck`; if false it hands off to the human (or fails `LOGIN_REQUIRED` when non-interactive) |
 | `inputs` | no | `{ name: { type: string/integer/number/boolean/array/object, default, description, enum, secret, required } }`. No default ⇒ required. `secret: true` ⇒ shown as `***` in records |
-| `defaults` | no | `timeoutMs` (10000), `retries` (0), `stepGapMs` (number or `[min,max]`), `humanize` (true), `screenshots` (`failure`/`every`/`none`) |
+| `defaults` | no | `timeoutMs` (10000), `retries` (0), `stepGapMs` (number or `[min,max]`), `humanize` (true), `screenshots` (`failure`/`every`/`none`), `dialogs` (`dismiss` default / `accept` / `{ "action": "accept", "promptText": "..." }` for alert/confirm/prompt; `run`/`act --dialogs accept` overrides) |
 | `steps` | yes | array of steps |
 | `outputs` | no | `{ from: "{{vars.x}}", schema: {...} }` — final result, checked against a JSON Schema subset (type, required, properties, items, minItems, maxItems, enum) ⇒ `OUTPUT_INVALID` |
 | `provenance` | no | free-form; `patch` appends to `provenance.repairs` |

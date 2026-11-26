@@ -44,6 +44,17 @@ export interface RunOptions {
   onAsk?: 'pause' | 'default' | 'fail';
   /** continue a run that is paused at an ask step, in the same run directory (the answer is in its state.json) */
   continueRun?: string;
+  /** alert / confirm / prompt dialogs: dismiss (default) or accept. Overrides the template's defaults.dialogs */
+  dialogs?: 'dismiss' | 'accept';
+}
+
+export interface DialogPolicy {
+  action: 'dismiss' | 'accept';
+  promptText?: string;
+}
+export function dialogPolicy(fromTemplate: any, override?: 'dismiss' | 'accept'): DialogPolicy {
+  const t: DialogPolicy = typeof fromTemplate === 'string' ? { action: fromTemplate as any } : fromTemplate?.action ? fromTemplate : { action: 'dismiss' };
+  return override ? { ...t, action: override } : t;
 }
 
 export interface RunResult {
@@ -135,6 +146,8 @@ export class Runner {
   timeout: number;
   screenshots: 'failure' | 'every' | 'none';
   handoffMode: 'auto' | 'never';
+  dialogs: DialogPolicy;
+  private dialogListener?: (d: any) => void;
   onAsk: 'pause' | 'default' | 'fail';
   site: string[];
   /** the recipe whose steps are running now: the top template, or a fragment called by a `recipe` step */
@@ -151,6 +164,7 @@ export class Runner {
     this.screenshots = opts.screenshots ?? d.screenshots ?? 'failure';
     this.handoffMode = opts.headless ? 'never' : opts.handoff ?? 'auto';
     this.onAsk = opts.onAsk ?? (opts.connected ? 'fail' : 'pause');
+    this.dialogs = dialogPolicy(d.dialogs, opts.dialogs);
     this.site = this.tpl.site || [];
     this.cur = { tpl: this.tpl, path: opts.loaded.path };
     this.scope = { inputs: {}, vars: {}, account: opts.account || {} };
@@ -363,7 +377,8 @@ export class Runner {
       this.conn = this.opts.connected ?? (await connect(profile, { headless: this.opts.headless }));
       if (!cont && !this.opts.connected) this.ownsBrowser = this.conn.launchedHere && !this.opts.keepOpen;
       this.page = this.conn.page;
-      this.page.on('dialog', (d) => d.dismiss().catch(() => {}));
+      this.dialogListener = (d: any) => this.onDialog(d);
+      this.page.on('dialog', this.dialogListener);
       this.watchPage(this.page);
       if (cont) {
         startIdx = this.nextTop;
@@ -414,6 +429,7 @@ export class Runner {
       if (!this.dossierWritten) await this.writeDossier(null, err, error.path ?? '-', null).catch(() => {});
     } finally {
       if (this.page) this.unwatchPage(this.page);
+      if (this.page && this.dialogListener) this.page.off('dialog', this.dialogListener);
       if (!paused) this.rec.writeOutput(output);
       if (this.conn && !this.opts.connected) {
         // a paused run always leaves the browser open on the page, so the agent's answer continues right there
@@ -641,6 +657,16 @@ export class Runner {
     page.on('framenavigated', nav);
     ev.emit('page.navigated', { url: page.url() });
     measure();
+  }
+  /** Answer a JS dialog by the policy (an unanswered dialog would freeze the page) and record it. */
+  onDialog(d: any) {
+    const { action, promptText } = this.dialogs;
+    const type = d.type();
+    const message = String(d.message() || '').slice(0, 500);
+    const p = action === 'accept' ? d.accept(type === 'prompt' ? promptText ?? d.defaultValue() : undefined) : d.dismiss();
+    p.catch(() => {});
+    log.info(`  💬 ${type} dialog "${message.slice(0, 80)}" → ${action}`);
+    this.rec?.events.emit('dialog', { dialogType: type, message, action, ...(action === 'accept' && type === 'prompt' ? { promptText: promptText ?? d.defaultValue() } : {}) });
   }
   unwatchPage(page: Page) {
     human.observeInput(page, null);

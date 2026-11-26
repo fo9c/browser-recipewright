@@ -251,6 +251,21 @@
       "if": {
         "properties": {
           "type": {
+            "const": "dialog"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/dialog"
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
             "const": "ask.start"
           }
         },
@@ -758,6 +773,33 @@
       "required": [
         "path",
         "kind"
+      ],
+      "additionalProperties": {}
+    },
+    "dialog": {
+      "type": "object",
+      "properties": {
+        "dialogType": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "accept",
+            "dismiss"
+          ]
+        },
+        "type": {
+          "const": "dialog"
+        }
+      },
+      "required": [
+        "dialogType",
+        "message",
+        "action"
       ],
       "additionalProperties": {}
     },

@@ -68,6 +68,12 @@ function exitCodeFor(code?: string) {
   return 1;
 }
 
+function dialogsOpt(v?: string): 'dismiss' | 'accept' | undefined {
+  if (v === undefined) return undefined;
+  if (v !== 'dismiss' && v !== 'accept') throw new RecipeError('INPUT_INVALID', '--dialogs must be dismiss or accept');
+  return v;
+}
+
 function wrap(fn: (...a: any[]) => Promise<any>) {
   return async (...a: any[]) => {
     try {
@@ -254,7 +260,9 @@ program
   .option('--url <url>').option('--value <v>').option('--text <t>').option('--key <k>').option('--fields <json>').option('--by <n>').option('--ms <n>')
   .option('--no-humanize', 'plain fast input')
   .option('--screenshot', 'take a screenshot after the step (path printed as "screenshot")')
+  .option('--dialogs <mode>', 'if the step opens an alert / confirm / prompt: dismiss (default) or accept')
   .action(wrap(async (action, o) => {
+    const dialogs = dialogsOpt(o.dialogs);
     let step: any = o.step ? JSON.parse(o.step) : { action };
     if (o.screenshot) step.screenshot = true;
     step.id ??= 'act';
@@ -277,7 +285,7 @@ program
     try {
       if (!step.saveAs) step.saveAs = '_act_out';
       const tpl = { id: '_act', version: '0.0.0', title: 'act', site: ['*'], defaults: { humanize: o.humanize }, steps: [step] };
-      const runner = new Runner({ loaded: { template: tpl, path: '(act)', source: 'file' }, connected: c, runsDir: path.join(dirs.runs(), '_act'), skipLoginCheck: true, handoff: 'never' });
+      const runner = new Runner({ loaded: { template: tpl, path: '(act)', source: 'file' }, connected: c, runsDir: path.join(dirs.runs(), '_act'), skipLoginCheck: true, handoff: 'never', dialogs });
       const res = await runner.run();
       const rec = readSteps(res.runDir).find((s) => s.stepId === step.id);
       const value = res.output?.[step.saveAs] ?? null;
@@ -350,14 +358,16 @@ program
   .option('--resume <runDir>', 'continue a failed or interrupted run: skips finished steps and finished forEach items (reuses saved variables)')
   .option('--handoff-timeout <min>', 'minutes to wait for a human', '15')
   .option('--on-ask <mode>', 'ask steps (breakpoints): pause = stop and wait for the agent (default) · default = use the step default · fail', 'pause')
+  .option('--dialogs <mode>', 'alert / confirm / prompt dialogs: dismiss or accept (default: the template\'s defaults.dialogs, else dismiss)')
   .action(wrap(async (ref, o) => {
+    const dialogs = dialogsOpt(o.dialogs);
     if (!['pause', 'default', 'fail'].includes(o.onAsk)) throw new RecipeError('INPUT_INVALID', '--on-ask must be pause, default or fail');
     const loaded = loadTemplate(ref);
     await taskRhythm();
     const runner = new Runner({
       loaded, inputs: parseInputs(o.input, o.inputs), profile: o.profile, headless: o.headless, keepOpen: o.keepOpen,
       handoff: o.handoff === false ? 'never' : 'auto', humanize: o.humanize === false ? false : undefined,
-      screenshots: o.screenshots, resumeFrom: o.resume, handoffTimeoutMs: Number(o.handoffTimeout) * 60000, onAsk: o.onAsk,
+      screenshots: o.screenshots, resumeFrom: o.resume, handoffTimeoutMs: Number(o.handoffTimeout) * 60000, onAsk: o.onAsk, dialogs,
     });
     printRunResult(await runner.run(), 'run');
   }));
