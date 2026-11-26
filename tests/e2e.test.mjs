@@ -465,3 +465,41 @@ test('profiles: without -p, live commands use the only running browser; two runn
   assert.match((await cli('snapshot', '-p', 'other.test/a')).stdout, /about:blank/);
   await cli('close', '--all');
 });
+
+test('batch: two browsers in parallel, item caps per site+account (capInput), one merged table', { skip }, async () => {
+  await cli('close', '--all');
+  for (const p of ['demo/p1', 'demo/p2']) {
+    assert.equal((await cli('launch', '--headless', '-p', p, '--url', `${srv.url}/home.html?autologin=1`)).json.status, 'ok');
+    await cli('close', '-p', p);
+  }
+  const spec = {
+    name: 'par', template: 'demo/local-feed', headless: true, spacingMs: 300, parallel: 2,
+    caps: { itemsPerDay: 3 }, capInput: 'count',
+    inputs: { base: srv.url, count: 2, maxComments: 1 },
+    accounts: [{ id: 'p1', profile: 'demo/p1' }, { id: 'p2', profile: 'demo/p2' }],
+    jobs: [{ account: 'p1' }, { account: 'p1' }, { account: 'p2' }],
+  };
+  const f = path.join(HOME, 'batch-par.json');
+  fs.writeFileSync(f, JSON.stringify(spec));
+  const r = await cli('batch', f);
+  assert.deepEqual(r.json.counts, { success: 3 }, r.stderr);
+  // p2 started while p1's first job was still running (p1's second job had to wait: same profile)
+  const log = r.stderr;
+  assert.ok(log.indexOf('job p2#1') < log.indexOf('✓ success'), log);
+  assert.ok(log.indexOf('job p1#2') > log.indexOf('✓ success'), log);
+  assert.match(log, /p1#2: count lowered to 1 \(item cap\)/);
+  assert.equal(r.json.merged.rows, 5);
+  assert.deepEqual(r.json.merged.byAccount, { p1: 3, p2: 2 });
+  const merged = JSON.parse(fs.readFileSync(r.json.merged.json, 'utf8'));
+  assert.deepEqual(Object.keys(merged[0]).slice(0, 3), ['_job', '_account', '_profile']);
+  assert.ok(merged.every((m) => m.post && m._profile.startsWith('demo/p')));
+  const csv = fs.readFileSync(r.json.merged.csv, 'utf8');
+  assert.match(csv.split('\n')[0], /^﻿_job,_account,_profile,post/);
+  assert.equal(csv.trim().split('\n').length, 6);
+  // the caps live in the profile's usage, not the batch: a new batch tomorrow-morning-style sees them
+  const again = await cli('batch', f, '--parallel', '1');
+  assert.deepEqual(again.json.counts, { skipped_cap: 2, success: 1 }, again.stderr);
+  assert.equal(again.json.merged.byAccount.p2, 1);
+  const acc = await cli('accounts');
+  assert.equal(acc.json.accounts.find((a) => a.profile === 'demo/p1').usage.itemsToday, 3);
+});
