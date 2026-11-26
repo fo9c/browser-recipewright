@@ -298,3 +298,32 @@ test('profiles: one rule picks the profile when -p is not given', async () => {
     if (prev === undefined) delete process.env.BROWSER_RECIPEWRIGHT_HOME; else process.env.BROWSER_RECIPEWRIGHT_HOME = prev;
   }
 });
+
+test('usage and caps are counted per site+account, by day and by rolling hour', async () => {
+  const { recordUsage, usageOf, checkCaps, itemsOf, usageFile } = await import('../dist/usage.js');
+  const { capsFor } = await import('../dist/batch.js');
+  const prev = process.env.BROWSER_RECIPEWRIGHT_HOME;
+  process.env.BROWSER_RECIPEWRIGHT_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brw-usage-'));
+  try {
+    const now = new Date(2026, 10, 26, 15, 30);
+    const ago = (min) => new Date(now.getTime() - min * 60000);
+    recordUsage('a.com/main', 10, ago(200)); // today, not last hour
+    recordUsage('a.com/main', 5, ago(20));
+    recordUsage('b.com/main', 7, ago(5)); // same account id, other site: counted apart
+    assert.match(usageFile('a.com/main'), /a\.com__main\.json$/);
+    assert.deepEqual(usageOf('a.com/main', now), { runsToday: 2, runsLastHour: 1, itemsToday: 15, itemsLastHour: 5 });
+    assert.equal(usageOf('b.com/main', now).itemsToday, 7);
+    assert.equal(checkCaps('a.com/main', { runsPerDay: 2 }, now).ok, false);
+    assert.match(checkCaps('a.com/main', { runsPerHour: 1 }, now).reason, /hourly cap 1 runs/);
+    assert.equal(checkCaps('a.com/main', { itemsPerDay: 20, itemsPerHour: 8 }, now).itemsLeft, 3);
+    assert.equal(checkCaps('a.com/main', { itemsPerDay: 15 }, now).ok, false);
+    assert.equal(checkCaps('a.com/main', undefined, now).ok, true);
+    assert.equal(itemsOf('success', [1, 2, 3]), 3);
+    assert.equal(itemsOf('failed', [1]), 0);
+    assert.equal(itemsOf('success', { a: 1 }), 1);
+    assert.deepEqual(capsFor({ dailyCapPerAccount: 5, caps: { itemsPerHour: 9 } }, { caps: { itemsPerHour: 3 } }), { runsPerDay: 5, itemsPerHour: 3 });
+    assert.throws(() => capsFor({ caps: { runsPerDay: -1 } }, {}), /whole number/);
+  } finally {
+    if (prev === undefined) delete process.env.BROWSER_RECIPEWRIGHT_HOME; else process.env.BROWSER_RECIPEWRIGHT_HOME = prev;
+  }
+});

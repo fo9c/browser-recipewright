@@ -20,6 +20,7 @@ import { loadScriptCode, hostMatches } from './scripts.js';
 import { validateTemplate } from './validate.js';
 import { appendTargets } from './schema.js';
 import { coerceAnswer, readPendingAsk, ASK_FILE, type PendingAsk } from './ask.js';
+import { recordUsage, itemsOf } from './usage.js';
 import { resolveRecipe, checkRecipeCalls, MAX_RECIPE_DEPTH } from './flow.js';
 import type { LoadedTemplate } from './library.js';
 import { RecipeError, sleep, pickMs, log, truncateForRecord, readJson, writeJson, ENV_ERROR_CODES } from './util.js';
@@ -439,6 +440,11 @@ export class Runner {
       }
     }
     const status = error ? 'failed' : 'success';
+    // usage per site+account (caps): every real run that ended counts; act (connected) and runs that never got
+    // past the login check do not
+    if (!this.opts.connected && error?.code !== 'LOGIN_REQUIRED') {
+      try { recordUsage(this.opts.profile || defaultProfile(this.tpl), itemsOf(status, output)); } catch {}
+    }
     this.rec.finish({ status, error: error ?? null, outputCount: Array.isArray(output) ? output.length : undefined });
     const res: RunResult = { status, runDir: this.rec.dir, output, outputPath: path.join(this.rec.dir, 'output.json'), error };
     if (error) res.dossier = path.join(this.rec.dir, 'failure', 'dossier.json');
