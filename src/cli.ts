@@ -19,6 +19,7 @@ import { usageOf } from './usage.js';
 import { buildJsonSchema } from './schema.js';
 import { checkRunDir, EVENTS_FILE, buildRunEventsJsonSchema } from './events.js';
 import { startDemoServer } from './demo.js';
+import { importLogin, listChromeProfiles, userChromeDir } from './import-login.js';
 import { checkRecipeCalls } from './flow.js';
 import { startTask, endTask, currentTask, readJournal, listTasks, journal, taskRhythm, draftFromJournal, taskDir } from './task.js';
 import { preview as previewData } from './events.js';
@@ -64,7 +65,7 @@ function parseInputs(pairs: string[] = [], json?: string): Record<string, any> {
 function exitCodeFor(code?: string) {
   if (!code) return 0;
   if (code === 'ASK_PENDING') return 4;
-  if (['LOGIN_REQUIRED', 'CHALLENGE_DETECTED', 'HANDOFF_REQUIRED', 'BROWSER_ERROR'].includes(code)) return 3;
+  if (['LOGIN_REQUIRED', 'CHALLENGE_DETECTED', 'HANDOFF_REQUIRED', 'BROWSER_ERROR', 'IMPORT_FAILED', 'IMPORT_EMPTY'].includes(code)) return 3;
   if (['INPUT_INVALID', 'TEMPLATE_INVALID', 'TEMPLATE_NOT_FOUND', 'PATCH_INVALID', 'BATCH_INVALID', 'ANSWER_INVALID', 'PROFILE_AMBIGUOUS'].includes(code)) return 2;
   return 1;
 }
@@ -218,6 +219,29 @@ program
     await sleep(1500);
     await closeSession(profile, c.browser);
     out({ status: loggedIn || enter ? 'ok' : 'timeout', profile, loggedIn: check ? loggedIn : null });
+  }));
+
+program
+  .command('import-login [templateOrSite]')
+  .description('OPTIONAL, not the default: copy one site\'s login (cookies) from your own Chrome into an isolated profile, once. Your Chrome is only read, never attached to. If it fails, log in by hand with: login')
+  .option('-p, --profile <site/account>', 'target isolated profile (default: <site>/default)')
+  .option('--from <chromeProfile>', 'which of your Chrome profiles: its name as shown in Chrome, or folder (Default, "Profile 1")', undefined)
+  .option('--domain <domain>', 'also take cookies of this domain, e.g. a login domain (repeatable)', collect, [])
+  .option('--chrome-dir <dir>', 'your Chrome data folder, if not in the usual place')
+  .option('--list', 'only list your Chrome profiles')
+  .action(wrap(async (ref, o) => {
+    if (o.list) {
+      const dir = o.chromeDir || userChromeDir();
+      return out({ status: 'ok', chromeDir: dir, profiles: listChromeProfiles(dir) });
+    }
+    if (!ref) throw new RecipeError('INPUT_INVALID', 'give a site (example.com) or a recipe id');
+    let tpl: any = null;
+    try { tpl = loadTemplate(ref).template; } catch {}
+    const site = tpl ? tpl.site[0] : ref;
+    const profile = (await resolveProfile({ explicit: o.profile, site })).profile;
+    const r = await importLogin({ site, profile, domains: o.domain, chromeDir: o.chromeDir, from: o.from });
+    log.info(`✓ ${r.imported} cookie(s) for ${r.cookieDomains.join(', ')} copied into ${r.profile}. Runs with -p ${r.profile} start logged in (check with a run; if the site still asks to log in, use: browser-recipewright login ${ref} -p ${r.profile})`);
+    out({ status: 'ok', ...r });
   }));
 
 // ---------------- exploration ----------------

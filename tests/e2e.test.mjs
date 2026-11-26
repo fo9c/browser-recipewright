@@ -500,3 +500,42 @@ test('batch: two browsers in parallel, a reminder (never a block) per site+accou
   const acc = await cli('accounts');
   assert.deepEqual(acc.json.accounts.find((a) => a.profile === 'demo/p1').usage, { runsToday: 2, itemsToday: 4 });
 });
+
+test('import-login (optional): copies one site\'s cookies from a Chrome data folder into an isolated profile', { skip }, async () => {
+  await cli('close', '--all');
+  process.env.BROWSER_RECIPEWRIGHT_HOME = HOME;
+  const { connect, closeSession } = await import('../dist/browser.js');
+  // stand-in for "your own Chrome": a Chrome data folder that is logged in to two sites
+  const mine = await connect('_mychrome/data', { headless: true, reuse: false });
+  const exp = Math.floor(Date.now() / 1000) + 3600;
+  await mine.context.addCookies([
+    { name: 'sid', value: 'abc', domain: 'example.com', path: '/', expires: exp },
+    { name: 'pref', value: '1', domain: '.www.example.com', path: '/', expires: exp },
+    { name: 'other', value: 'zzz', domain: 'other.test', path: '/', expires: exp },
+  ]);
+  await closeSession('_mychrome/data', mine.browser);
+  const chromeDir = path.join(HOME, 'profiles', '_mychrome', 'data');
+
+  const list = await cli('import-login', '--list', '--chrome-dir', chromeDir);
+  assert.equal(list.json.profiles[0].dir, 'Default', list.stdout);
+
+  const r = await cli('import-login', 'example.com', '--chrome-dir', chromeDir);
+  assert.equal(r.json.status, 'ok', r.stdout + r.stderr);
+  assert.equal(r.json.profile, 'example.com/default');
+  assert.equal(r.json.imported, 2);
+  assert.deepEqual(r.json.cookieDomains, ['.www.example.com', 'example.com']);
+  // the isolated profile now has exactly that site's cookies, and keeps them after a restart
+  const iso = await connect('example.com/default', { headless: true, reuse: false });
+  const got = await iso.context.cookies();
+  await closeSession('example.com/default', iso.browser);
+  assert.deepEqual(got.map((c) => c.name).sort(), ['pref', 'sid']);
+  assert.ok(!fs.existsSync(path.join(HOME, 'profiles', '_import')), 'temporary copy removed');
+
+  const none = await cli('import-login', 'nothere.test', '--chrome-dir', chromeDir, '-p', 'nothere.test/a');
+  assert.equal(none.code, 3);
+  assert.equal(none.json.error.code, 'IMPORT_EMPTY');
+  assert.match(none.json.error.message, /login nothere\.test -p nothere\.test\/a/);
+  const bad = await cli('import-login', 'example.com', '--chrome-dir', chromeDir, '--from', 'Work');
+  assert.equal(bad.json.error.code, 'IMPORT_FAILED');
+  assert.match(bad.json.error.message, /Available: "/);
+});

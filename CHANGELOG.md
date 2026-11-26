@@ -8,6 +8,7 @@ All notable changes are listed here (Keep a Changelog format, SemVer). While on 
 ## [Unreleased]
 
 ### Added
+- **可选：从自己的 Chrome 导入登录** `import-login <站点|配方>`：把你平时用的 Chrome 里这个网站的 cookie 一次性复制进隔离 profile（默认 `<站点>/default`），之后照常用隔离 profile 跑。只读取你的 Chrome（复制一份临时副本让 Chrome 自己解密，用完删除），只取这个网站的域名（`--domain` 可加登录域名），`--from` 选 Chrome 用户，`--list` 列出。失败时（Chrome 开着锁住文件、Mac 钥匙串被拒、Windows 应用绑定加密、该用户没登录）报 `IMPORT_FAILED` / `IMPORT_EMPTY`（退出码 3）并提示改用 `login`。默认仍推荐手动 `login`。
 - **断点（`ask` 步骤）**：配方可以在中途停下，把问题和数据交给调用它的 Agent 判断（例如"这 30 条帖子里哪些真正相关"），浏览器停在原页面。`run` 以退出码 `4` 结束并打印问题；Agent 用 `browser-recipewright answer <runDir> --value ...` 回答后，同一次运行从这一步接着跑（循环、`if`、`group` 内部也行），记录写在同一个运行目录里。执行器自己从不调用模型。答案格式：`text` `number` `boolean` `choice` `pick`（从列表里挑编号）`json`。
 - `browser-recipewright pending`：列出所有停在断点、等待回答的运行。
 - `run --on-ask pause|default|fail`；`batch` 和 `selfcheck` 无人值守，断点使用步骤的 `default`（`batch.json` 可设 `"onAsk": "fail"`）。

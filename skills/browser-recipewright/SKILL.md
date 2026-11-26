@@ -50,6 +50,7 @@ browser-recipewright act collect --step '{"item":[{"testid":"post"}],"fields":{.
 - `snapshot --json` gives, for each ref, candidates already checked to match exactly one element. Copy them into `target`.
 - Prefer navigating by URL (`goto` with `{{inputs.x | urlencode}}`) over typing into search boxes: fewer steps, more stable.
 - If you see a login wall or captcha: stop and ask the human (`browser-recipewright login <template> -p <profile>`; if the template's URL uses inputs, pass them: `-i base=...`). Never try to bypass a captcha.
+- Optional shortcut for logins: `browser-recipewright import-login <site|template> [-p <profile>] [--from "<Chrome profile name>"] [--domain <extra login domain>]` copies that one site's cookies from the human's own Chrome into the isolated profile, once (their Chrome is only read). Offer it only when the human says they are already logged in there and would rather not log in again; default is still `login`. On `IMPORT_EMPTY` / `IMPORT_FAILED` (exit 3: Chrome open and locking the file, macOS keychain denied, Windows app-bound encryption, not logged in in that Chrome profile) do not retry blindly: fall back to `login`. Only cookies are copied; a site that keeps its login in localStorage still needs `login`. `import-login --list` shows the Chrome profiles.
 
 ## 2. Write the template
 
