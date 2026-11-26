@@ -225,7 +225,7 @@ program
 
 program
   .command('snapshot')
-  .description('print an outline of the current page with [ref=rN] ids and ready-made locator candidates')
+  .description('print an outline of the current page with stable [ref=…] ids (same element → same id across snapshots) and ready-made locator candidates')
   .option('-p, --profile <site/account>', 'profile', 'default/default')
   .option('-u, --url <url>', 'navigate first')
   .option('--max <n>', 'max nodes', '300')
@@ -248,7 +248,7 @@ program
   .command('act <action>')
   .description('run ONE step against the live session, with the same semantics as a template step')
   .option('-p, --profile <site/account>', 'profile', 'default/default')
-  .option('--ref <ref>', 'use locator candidates of a snapshot ref (e.g. r12)')
+  .option('--ref <ref>', 'use locator candidates of a snapshot ref (e.g. rk3x9a)')
   .option('--target <json>', 'locator candidates as JSON array')
   .option('--step <json>', 'full step JSON (overrides other flags)')
   .option('--url <url>').option('--value <v>').option('--text <t>').option('--key <k>').option('--fields <json>').option('--by <n>').option('--ms <n>')
@@ -260,8 +260,10 @@ program
     step.id ??= 'act';
     step.action ??= action;
     if (o.ref) {
-      const refs = readJson(refsFile(o.profile)).refs;
-      if (!refs[o.ref]) throw new RpaError('INPUT_INVALID', `ref ${o.ref} not in last snapshot; run snapshot again`);
+      if (!fs.existsSync(refsFile(o.profile))) throw new RpaError('INPUT_INVALID', `no snapshot for profile ${o.profile} yet; run snapshot first`);
+      const snap = readJson(refsFile(o.profile));
+      const refs = snap.refs;
+      if (!refs[o.ref]) throw new RpaError('INPUT_INVALID', `ref ${o.ref} is not in the last snapshot (${snap.url}); the page may have changed, run snapshot again`);
       step[action === 'download' ? 'trigger' : action === 'collect' ? 'item' : 'target'] = refs[o.ref];
     }
     if (o.target) step.target = JSON.parse(o.target);

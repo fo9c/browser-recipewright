@@ -34,10 +34,10 @@ If one fits, skip to step 4.
 
 ```bash
 browser-recipewright launch -p example.com/main --url "https://example.com/" # opens/reuses that account's Chrome
-browser-recipewright snapshot -p example.com/main                              # outline with [ref=rN]
+browser-recipewright snapshot -p example.com/main                              # outline with stable [ref=r…] ids
 browser-recipewright snapshot -p example.com/main --json                       # same + locator candidates per ref
 browser-recipewright screenshot -p example.com/main -o page.png [--full]       # look at the page yourself (PNG); act --screenshot does it after a step
-browser-recipewright act click --ref r12 -p example.com/main                   # try ONE step, same semantics as a template step
+browser-recipewright act click --ref rk3x9a -p example.com/main                # try ONE step, same semantics as a template step
 browser-recipewright act fill --ref r5 --value "hello" -p example.com/main
 browser-recipewright act read --ref r20 --fields '{"text":{"text":true}}' -p example.com/main
 browser-recipewright act goto --url "https://example.com/search?q=ai" -p example.com/main

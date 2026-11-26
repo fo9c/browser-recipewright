@@ -53,7 +53,7 @@ test('fresh profile without login → LOGIN_REQUIRED (exit 3)', { skip }, async 
 test('login via snapshot + act, then full run succeeds with records', { skip }, async () => {
   assert.equal((await cli('launch', '--headless', '-p', 'demo/e2e', '--url', `${srv.url}/home.html`)).json.status, 'ok');
   const snap = await cli('snapshot', '-p', 'demo/e2e');
-  const ref = snap.stdout.match(/button "Log in".*\[ref=(r\d+)\]/)[1];
+  const ref = snap.stdout.match(/button "Log in".*\[ref=(r[\w-]+)\]/)[1];
   const act = await cli('act', 'click', '--ref', ref, '-p', 'demo/e2e');
   assert.equal(act.json.status, 'success', act.stdout);
   const r = await cli('run', 'demo/local-feed', '-i', `base=${srv.url}`, '-i', 'count=3', '-i', 'maxComments=4', '-p', 'demo/e2e', '--no-handoff');
@@ -401,4 +401,26 @@ test('waitFor a target that matches many elements passes (presence, not "exactly
   assert.ok(r.json.locator.tried[0].matches > 1, r.stdout);
   const miss = await cli('act', 'waitFor', '--target', '[{"css":"#nope"}]', '--step', '{"action":"waitFor","target":[{"css":"#nope"}],"timeoutMs":800}', '-p', 'fix/e2e');
   assert.equal(miss.json.error.code, 'LOCATOR_NOT_FOUND', miss.stdout);
+});
+
+test('snapshot ref ids are stable: same element keeps its ref when content above it changes', { skip }, async () => {
+  const html = '<main><div id=top></div><button onclick="for(let i=0;i<10;i++){const b=document.createElement(\'button\');b.textContent=\'New \'+i;document.getElementById(\'top\').prepend(b)}">Add</button><a href="/next">Target link</a><button>Like</button><button>Like</button></main>';
+  assert.equal((await cli('launch', '--headless', '-p', 'fix/e2e', '--url', 'data:text/html,' + encodeURIComponent(html))).json.status, 'ok');
+  const refOf = (text, re) => text.match(re)?.[1];
+  const a = await cli('snapshot', '-p', 'fix/e2e');
+  const before = refOf(a.stdout, /link "Target link".*\[ref=(r[\w-]+)\]/);
+  assert.ok(before, a.stdout);
+  const add = refOf(a.stdout, /button "Add".*\[ref=(r[\w-]+)\]/);
+  // ten new buttons appear above the link: position-based ids (r1, r2 ...) would all shift
+  const c = await cli('act', 'click', '--ref', add, '-p', 'fix/e2e');
+  assert.equal(c.json.status, 'success', c.stdout);
+  const b = await cli('snapshot', '-p', 'fix/e2e');
+  assert.match(b.stdout, /New 9/);
+  assert.equal(refOf(b.stdout, /link "Target link".*\[ref=(r[\w-]+)\]/), before);
+  assert.equal(refOf(b.stdout, /button "Add".*\[ref=(r[\w-]+)\]/), add);
+  const refs = [...b.stdout.matchAll(/\[ref=(r[\w-]+)\]/g)].map((m) => m[1]);
+  assert.equal(new Set(refs).size, refs.length, 'refs are unique (look-alike "Like" buttons get -2)');
+  assert.ok(refs.some((r) => r.endsWith('-2')));
+  const gone = await cli('act', 'click', '--ref', 'rzzzzz', '-p', 'fix/e2e');
+  assert.match(gone.json.error.message, /run snapshot again/);
 });
