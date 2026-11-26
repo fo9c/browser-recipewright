@@ -82,6 +82,29 @@ export async function resolveTarget(page: Page, target: any[], timeoutMs: number
   );
 }
 
+/**
+ * Wait until some candidate matches at least one element (waitFor: "is it on the page yet?").
+ * Unlike resolveTarget, several matches are fine: waiting for "the result list" must not fail
+ * just because the list has 20 rows.
+ */
+export async function waitPresent(page: Page, target: any[], timeoutMs: number): Promise<LocatorInfo & { matches: number }> {
+  const deadline = Date.now() + timeoutMs;
+  let tried: LocatorTry[] = [];
+  for (;;) {
+    tried = [];
+    for (let i = 0; i < target.length; i++) {
+      const c = target[i];
+      const root = await withinRoot(page, c);
+      const n = root ? await buildLocator(root, c).count().catch(() => 0) : 0;
+      tried.push({ candidate: i, matches: n });
+      if (n >= 1) return { tried, hit: i, matches: n };
+    }
+    if (Date.now() >= deadline) break;
+    await sleep(250);
+  }
+  throw new RpaError('LOCATOR_NOT_FOUND', `waitFor: no candidate matched any element after ${timeoutMs}ms`, { locator: { tried, hit: null } });
+}
+
 /** Count matches of the first candidate that matches anything. */
 export async function countTarget(page: Page, target: any[]): Promise<number> {
   for (const c of target) {

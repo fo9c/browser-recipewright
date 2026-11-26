@@ -10,7 +10,7 @@ import type { Page } from 'patchright';
 import { connect, closeSession, disconnect, type Connected } from './browser.js';
 import { render, Scope, FILTERS, parseCount } from './render.js';
 import { evalCond, type PageProbe, type CondResult } from './conditions.js';
-import { resolveTarget, countTarget, textOfTarget } from './locator.js';
+import { resolveTarget, countTarget, textOfTarget, waitPresent } from './locator.js';
 import { inpageCall, inpageElementFn } from './inpage.js';
 import * as human from './human.js';
 import { preview } from './events.js';
@@ -1050,7 +1050,11 @@ export class Runner {
           if (s.state === 'hidden' || s.state === 'detached') {
             const r = await this.waitCond({ notExists: render(step.target, scope) }, scope, timeout);
             if (!r.pass) throw new RpaError('ACTION_TIMEOUT', `element still present after ${timeout}ms`);
-          } else await resolve(s.target);
+          } else {
+            // presence only: one or many matches both count as "there"
+            const info = await waitPresent(page, render(step.target, scope), timeout);
+            rec.locator = { tried: info.tried, hit: info.hit };
+          }
         }
         if (s.url) {
           const r = await this.waitCond({ urlContains: s.url }, scope, timeout);

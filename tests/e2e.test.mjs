@@ -392,3 +392,13 @@ test('tasks: act / run / notes go into one journal; task draft turns them into a
     await cli('close', '-p', 'test/task');
   }
 });
+
+test('waitFor a target that matches many elements passes (presence, not "exactly one")', { skip }, async () => {
+  assert.equal((await cli('launch', '--headless', '-p', 'fix/e2e', '--url', `${srv.url}/selfcheck.html`)).json.status, 'ok');
+  const r = await cli('act', 'waitFor', '--target', '[{"css":"section"}]', '-p', 'fix/e2e');
+  assert.equal(r.json.status, 'success', r.stdout);
+  assert.equal(r.json.locator.hit, 0);
+  assert.ok(r.json.locator.tried[0].matches > 1, r.stdout);
+  const miss = await cli('act', 'waitFor', '--target', '[{"css":"#nope"}]', '--step', '{"action":"waitFor","target":[{"css":"#nope"}],"timeoutMs":800}', '-p', 'fix/e2e');
+  assert.equal(miss.json.error.code, 'LOCATOR_NOT_FOUND', miss.stdout);
+});
